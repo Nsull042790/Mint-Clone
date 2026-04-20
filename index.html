@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0a1f44" />
+  <title>Luminate — Your lifelong financial partner</title>
+  <meta name="description" content="Luminate is the powerful personal finance platform from Luminate Bank. Track spending, build budgets, hit life goals, and grow your net worth — all in one place." />
+  <link rel="icon" type="image/svg+xml" href="assets/img/mark.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+</head>
+<body>
+
+<!-- =============== ONBOARDING =============== -->
+<div id="onboarding" class="onboarding hide">
+  <div class="ob-card">
+    <div class="ob-logo">
+      <svg viewBox="0 0 48 48"><defs><linearGradient id="olg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#0a1f44"/><stop offset="100%" stop-color="#7bb7e0"/></linearGradient></defs><circle cx="24" cy="24" r="20" fill="url(#olg)"/><path d="M14 30 L14 14 L20 14 L24 22 L28 14 L34 14 L34 30 L30 30 L30 20 L26 28 L22 28 L18 20 L18 30 Z" fill="#fff"/></svg>
+      <span class="ob-logo-text">Luminate</span>
+    </div>
+    <div class="ob-dots">
+      <span class="on"></span><span></span><span></span><span></span>
+    </div>
+
+    <!-- Step 1: Welcome -->
+    <div class="ob-step active" data-step="1">
+      <h1>Your money,<br/>finally in one place.</h1>
+      <p>Welcome to Luminate — the personal finance platform built by Luminate Bank to be your financial partner for life. No shutting down. No ads. Just clarity.</p>
+      <div class="ob-field">
+        <label>What should we call you?</label>
+        <input type="text" id="ob-firstName" placeholder="First name" />
+      </div>
+      <div class="ob-field">
+        <label>Email</label>
+        <input type="email" id="ob-email" placeholder="you@email.com" />
+      </div>
+      <div class="ob-actions">
+        <button class="ob-btn" data-ob-next="2">Get started</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Income -->
+    <div class="ob-step" data-step="2">
+      <h1>Let's personalize your plan.</h1>
+      <p>The more Luminate knows, the smarter your recommendations get. This stays on your device — we never sell your data.</p>
+      <div class="ob-field">
+        <label>Monthly take-home income</label>
+        <input type="number" id="ob-income" placeholder="5000" />
+      </div>
+      <div class="ob-field">
+        <label>Household size</label>
+        <select id="ob-household">
+          <option value="1">Just me</option>
+          <option value="2">Me + partner</option>
+          <option value="3">Small family (3)</option>
+          <option value="4">Family (4+)</option>
+        </select>
+      </div>
+      <div class="ob-actions">
+        <button class="ob-btn secondary" data-ob-prev="1">Back</button>
+        <button class="ob-btn" data-ob-next="3">Continue</button>
+      </div>
+    </div>
+
+    <!-- Step 3: Accounts -->
+    <div class="ob-step" data-step="3">
+      <h1>Link your first accounts.</h1>
+      <p>This demo pre-links sample Luminate accounts. In production, Luminate connects to 12,000+ US institutions.</p>
+      <div class="ob-accounts-grid">
+        <button class="ob-account-pick picked"><strong>Luminate Checking</strong><small>Everyday spending</small></button>
+        <button class="ob-account-pick picked"><strong>Luminate Savings</strong><small>4.50% APY</small></button>
+        <button class="ob-account-pick picked"><strong>Luminate Sapphire</strong><small>Credit card</small></button>
+        <button class="ob-account-pick picked"><strong>Luminate Invest</strong><small>Brokerage</small></button>
+        <button class="ob-account-pick picked"><strong>Fidelity 401(k)</strong><small>Retirement</small></button>
+        <button class="ob-account-pick picked"><strong>Wells Fargo</strong><small>Mortgage</small></button>
+      </div>
+      <div class="ob-actions">
+        <button class="ob-btn secondary" data-ob-prev="2">Back</button>
+        <button class="ob-btn" data-ob-next="4">Link accounts</button>
+      </div>
+    </div>
+
+    <!-- Step 4: Life goals -->
+    <div class="ob-step" data-step="4">
+      <h1>What do you dream about?</h1>
+      <p>Pick what matters to you — Luminate's goal engine will build a personalized plan.</p>
+      <div class="ob-goals">
+        <button class="ob-goal-pick picked" data-goal="emergency"><span class="emoji">🛟</span><div><strong>Emergency fund</strong><small>3–6 months of expenses</small></div></button>
+        <button class="ob-goal-pick picked" data-goal="vacation"><span class="emoji">✈️</span><div><strong>Dream vacation</strong><small>Plan your next getaway</small></div></button>
+        <button class="ob-goal-pick picked" data-goal="home_project"><span class="emoji">🏡</span><div><strong>Home projects</strong><small>Kitchen, yard, renovations</small></div></button>
+        <button class="ob-goal-pick" data-goal="home_down"><span class="emoji">🔑</span><div><strong>Home down payment</strong><small>Buy your first home</small></div></button>
+        <button class="ob-goal-pick" data-goal="wedding"><span class="emoji">💍</span><div><strong>Wedding</strong><small>Save for the big day</small></div></button>
+        <button class="ob-goal-pick" data-goal="baby"><span class="emoji">👶</span><div><strong>Growing family</strong><small>Baby on the way</small></div></button>
+        <button class="ob-goal-pick" data-goal="car"><span class="emoji">🚗</span><div><strong>New vehicle</strong><small>Replace or upgrade</small></div></button>
+        <button class="ob-goal-pick" data-goal="retirement"><span class="emoji">🏖️</span><div><strong>Early retirement</strong><small>Financial independence</small></div></button>
+      </div>
+      <div class="ob-actions">
+        <button class="ob-btn secondary" data-ob-prev="3">Back</button>
+        <button class="ob-btn" id="ob-finish">Enter Luminate</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- =============== APP =============== -->
+<div class="app" id="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <svg viewBox="0 0 48 48"><defs><linearGradient id="slg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#7bb7e0"/><stop offset="100%" stop-color="#a9d0ea"/></linearGradient></defs><circle cx="24" cy="24" r="20" fill="url(#slg)"/><path d="M14 30 L14 14 L20 14 L24 22 L28 14 L34 14 L34 30 L30 30 L30 20 L26 28 L22 28 L18 20 L18 30 Z" fill="#0a1f44"/></svg>
+      <span>Luminate</span>
+    </div>
+
+    <div class="nav-section">Overview</div>
+    <button class="nav-item active" data-route="dashboard">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+      Dashboard
+    </button>
+    <button class="nav-item" data-route="transactions">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M6 12h12M9 18h6"/></svg>
+      Transactions
+    </button>
+    <button class="nav-item" data-route="accounts">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/></svg>
+      Accounts
+    </button>
+
+    <div class="nav-section">Plan</div>
+    <button class="nav-item" data-route="budgets">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v10l7 4"/><circle cx="12" cy="12" r="10"/></svg>
+      Budgets
+    </button>
+    <button class="nav-item" data-route="goals">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/></svg>
+      Life Goals
+    </button>
+    <button class="nav-item" data-route="bills">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+      Bills
+    </button>
+
+    <div class="nav-section">Grow</div>
+    <button class="nav-item" data-route="networth">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>
+      Net Worth
+    </button>
+    <button class="nav-item" data-route="investments">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>
+      Investments
+    </button>
+    <button class="nav-item" data-route="credit">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/></svg>
+      Credit
+    </button>
+    <button class="nav-item" data-route="insights">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21h6"/><path d="M12 17v4"/><path d="M8 17h8a5 5 0 0 0 1-9.9 6 6 0 0 0-11.8 1A4 4 0 0 0 8 17z"/></svg>
+      AI Insights
+    </button>
+    <button class="nav-item" data-route="rewards">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-1.5z"/></svg>
+      Luminate Rewards <span class="badge">★</span>
+    </button>
+
+    <div class="nav-section">Internal</div>
+    <button class="nav-item" data-route="advisor">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+      Advisor View
+    </button>
+    <button class="nav-item" data-route="settings">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      Settings
+    </button>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-user">
+        <div class="avatar" id="nav-avatar">A</div>
+        <div>
+          <strong id="nav-username">Alex Morgan</strong>
+          <small>Luminate Premier</small>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <button class="icon-btn sidebar-toggle" id="sidebar-toggle" aria-label="Menu">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
+      <h1 id="top-title">Dashboard</h1>
+      <div class="spacer"></div>
+      <div class="search">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" id="global-search" placeholder="Search transactions, merchants, categories…" />
+      </div>
+      <button class="icon-btn" id="refresh-btn" title="Refresh accounts">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg>
+      </button>
+      <button class="icon-btn" id="theme-btn" title="Toggle theme">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      </button>
+      <button class="icon-btn" title="Notifications">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>
+        <span class="dot"></span>
+      </button>
+    </header>
+
+    <section class="content" id="content">
+      <!-- Views injected here -->
+    </section>
+  </main>
+</div>
+
+<!-- =============== MODALS =============== -->
+<div class="modal-backdrop" id="modal-backdrop">
+  <div class="modal" id="modal"></div>
+</div>
+
+<div id="toast-root"></div>
+
+<script src="assets/js/data.js"></script>
+<script src="assets/js/app.js"></script>
+<script src="assets/js/views.js"></script>
+</body>
+</html>
