@@ -186,7 +186,121 @@
         subsBody,
         [el('button', { class: 'btn', onclick: () => toast('Canceled (demo)') }, 'Cancel selected (demo)')]));
     },
-    networth:     todo('Net Worth'),
+    networth: function (content) {
+      const s = getState();
+      const nw = netWorth();
+      const a = assets();
+      const l = liabilities();
+      const surplus = averageMonthlyIncome(3) - averageMonthlyExpense(3);
+
+      // Approximate 12-mo history: walk backward by average monthly surplus + small noise
+      const months = lastNMonthKeys(12);
+      const nwSeries = [];
+      let v = nw;
+      for (let i = months.length - 1; i >= 0; i--) {
+        nwSeries[i] = v;
+        const drift = surplus * 0.9 + (Math.sin(i * 1.7) * Math.max(200, Math.abs(surplus) * 0.15));
+        v = v - drift;
+      }
+      const nwPrev = nwSeries[nwSeries.length - 2] || nw;
+      const delta = nw - nwPrev;
+      const deltaPct = nwPrev !== 0 ? (delta / Math.abs(nwPrev)) * 100 : 0;
+
+      content.appendChild(viewHeader('Net Worth', 'Everything you own, minus everything you owe.'));
+
+      // Headline
+      content.appendChild(el('div', { class: 'grid grid-4', style: { marginBottom: '16px' } },
+        kpi('Net worth', fmtMoneyShort(nw),
+          { text: (delta >= 0 ? '▲ +' : '▼ ') + fmtMoneyShort(Math.abs(delta)) + '  (' + deltaPct.toFixed(1) + '%) mo/mo',
+            positive: delta >= 0, negative: delta < 0 }, 'navy'),
+        kpi('Assets',       fmtMoneyShort(a), null, 'success'),
+        kpi('Liabilities',  fmtMoneyShort(l), null, 'warn'),
+        kpi('Monthly change', fmtMoneyShort(surplus),
+          { text: surplus >= 0 ? 'Growing' : 'Declining', positive: surplus >= 0, negative: surplus < 0 })
+      ));
+
+      // Line + stacked bar row
+      const lineCanvas = el('canvas');
+      ensureChart(() => new Chart(lineCanvas, {
+        type: 'line',
+        data: {
+          labels: months.map(k => { const [y, m] = k.split('-'); return new Date(+y, +m - 1, 1).toLocaleString('en-US', { month: 'short' }); }),
+          datasets: [{ label: 'Net worth', data: nwSeries, tension: 0.35,
+            borderColor: '#0a1f44', backgroundColor: 'rgba(123,183,224,0.22)',
+            fill: true, borderWidth: 2, pointRadius: 2, pointBackgroundColor: '#7bb7e0' }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => fmtMoney(ctx.raw) } } },
+          scales: { y: { ticks: { callback: v => fmtMoneyShort(v) } } }
+        }
+      }));
+      const lineCard = card('12-month trend', el('div', { class: 'chart-wrap lg' }, lineCanvas));
+
+      // Assets by type vs liabilities by type stacked bar
+      const typeGroups = {
+        'Cash':        ['checking', 'savings'],
+        'Investments': ['investment', 'retirement'],
+        'Property':    ['property', 'vehicle'],
+        'Credit':      ['credit'],
+        'Loans':       ['loan']
+      };
+      const typeTotals = {};
+      Object.entries(typeGroups).forEach(([label, types]) => {
+        typeTotals[label] = s.accounts.filter(x => types.includes(x.type)).reduce((sum, x) => sum + x.balance, 0);
+      });
+      const barCanvas = el('canvas');
+      ensureChart(() => new Chart(barCanvas, {
+        type: 'bar',
+        data: {
+          labels: Object.keys(typeTotals),
+          datasets: [{
+            data: Object.values(typeTotals),
+            backgroundColor: Object.values(typeTotals).map(v => v >= 0 ? '#3ca975' : '#d94848'),
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => fmtMoney(ctx.raw) } } },
+          scales: { x: { ticks: { callback: v => fmtMoneyShort(v) } } }
+        }
+      }));
+      const barCard = card('Assets vs liabilities', el('div', { class: 'chart-wrap' }, barCanvas));
+
+      content.appendChild(el('div', { class: 'grid grid-dash', style: { marginBottom: '16px' } }, lineCard, barCard));
+
+      // Per-account contribution table
+      const accounts = s.accounts.slice().sort((x, y) => y.balance - x.balance);
+      const total = accounts.reduce((sum, x) => sum + x.balance, 0);
+      content.appendChild(card('Per-account contribution',
+        el('table', { class: 'table' },
+          el('thead', {}, el('tr', {},
+            el('th', {}, 'Account'),
+            el('th', {}, 'Type'),
+            el('th', {}, 'Share'),
+            el('th', { style: { textAlign: 'right' } }, 'Balance'))),
+          el('tbody', {}, ...accounts.map(acc => {
+            const share = total !== 0 ? Math.round((acc.balance / total) * 100) : 0;
+            return el('tr', {},
+              el('td', {},
+                el('div', { class: 'txn-merchant' },
+                  el('div', { class: 'txn-icon', style: { background: acc.color || 'var(--navy)', color: '#fff' } },
+                    (acc.institution || '?').slice(0, 1)),
+                  el('div', {},
+                    el('strong', {}, acc.nickname || acc.name),
+                    el('small', {}, acc.institution + ' ····' + acc.mask)))),
+              el('td', {}, el('span', { class: 'chip navy' }, acc.type)),
+              el('td', {}, el('div', { style: { width: '120px' } }, progressBar(Math.abs(share), acc.balance >= 0 ? 'success' : 'danger'))),
+              el('td', { class: cls('num', acc.balance >= 0 ? 'pos' : 'neg'),
+                style: { textAlign: 'right', fontWeight: 600 } }, fmtMoney(acc.balance)));
+          }),
+          el('tr', {},
+            el('td', { colspan: '3', style: { fontWeight: 700 } }, 'Net worth'),
+            el('td', { class: 'num', style: { textAlign: 'right', fontWeight: 700 } }, fmtMoney(nw))))
+        )
+      ));
+    },
     investments:  todo('Investments'),
     credit: function (content) {
       const s = getState();
