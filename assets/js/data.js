@@ -257,6 +257,10 @@
   }
 
   function seedUser() {
+    const joined = new Date();
+    joined.setFullYear(joined.getFullYear() - 3);
+    joined.setMonth(2);
+    joined.setDate(14);
     return {
       firstName: 'Alex',
       lastName: 'Morgan',
@@ -267,8 +271,41 @@
       creditScore: 782,
       creditHistory: buildCreditHistory(),
       onboarded: true,
-      theme: 'light'
+      theme: 'light',
+      currency: 'USD',
+      timezone: 'America/Los_Angeles',
+      notificationsEnabled: true,
+      joinedAt: joined.toISOString().slice(0, 10)
     };
+  }
+
+  function seedNotifications() {
+    const today = new Date();
+    const daysAgo = (n) => {
+      const x = new Date(today);
+      x.setDate(x.getDate() - n);
+      return x.toISOString().slice(0, 10);
+    };
+    return [
+      { id: 'n1', type: 'bill',     title: 'Mortgage due in 3 days',         body: '$2,180.00 will autopay from Luminate Checking on the 1st.',    date: daysAgo(0), read: false },
+      { id: 'n2', type: 'insight',  title: 'Dining spend up 22% this month', body: "You're $68 over your $320 dining budget. Want Lumi to rebalance?", date: daysAgo(1), read: false },
+      { id: 'n3', type: 'goal',     title: 'Italy Trip — milestone hit 🎉',  body: 'You crossed 33% funded. ETA to fully-funded: 12 months.',       date: daysAgo(2), read: true  },
+      { id: 'n4', type: 'security', title: 'New device signed in',           body: 'iPhone 15 Pro · San Francisco, CA. Was this you?',              date: daysAgo(4), read: true  }
+    ];
+  }
+
+  function seedRewardsRedemptions() {
+    const today = new Date();
+    const daysAgo = (n) => {
+      const x = new Date(today);
+      x.setDate(x.getDate() - n);
+      return x.toISOString().slice(0, 10);
+    };
+    return [
+      { id: 'rr1', date: daysAgo(14),  item: 'Statement credit',       cost: 5000,  value: 50 },
+      { id: 'rr2', date: daysAgo(62),  item: 'Amazon gift card',       cost: 7500,  value: 75 },
+      { id: 'rr3', date: daysAgo(128), item: 'Delta flight (SFO→JFK)', cost: 28000, value: 340 }
+    ];
   }
 
   function buildCreditHistory() {
@@ -301,7 +338,9 @@
       goals: seedGoals(),
       investments: INVESTMENTS.slice(),
       categories: CATEGORIES.slice(),
-      rules: []
+      rules: [],
+      notifications: seedNotifications(),
+      rewardsRedemptions: seedRewardsRedemptions()
     };
   }
 
