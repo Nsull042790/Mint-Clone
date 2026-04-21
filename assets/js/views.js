@@ -171,7 +171,75 @@
           )))
       ));
     },
-    insights:     todo('AI Insights'),
+    insights: function (content) {
+      const u = getState().user;
+      content.appendChild(viewHeader('AI Insights', 'Chat with Lumi, your Luminate financial coach.'));
+
+      // Shared bubble styles
+      const bubbleStyle = (who) => ({
+        maxWidth: '75%', padding: '12px 14px', borderRadius: '14px', marginBottom: '10px',
+        lineHeight: '1.45',
+        background: who === 'user' ? 'var(--navy)' : 'var(--surface-2)',
+        color: who === 'user' ? '#fff' : 'var(--text)',
+        alignSelf: who === 'user' ? 'flex-end' : 'flex-start'
+      });
+
+      // Left: chat column
+      const stream = el('div', { style: {
+        display: 'flex', flexDirection: 'column',
+        height: '460px', overflowY: 'auto',
+        padding: '14px', background: 'var(--bg)',
+        border: '1px solid var(--border)', borderRadius: 'var(--radius)'
+      }});
+      const addBubble = (who, text) => {
+        const b = el('div', { style: bubbleStyle(who) }, text);
+        stream.appendChild(b);
+        stream.scrollTop = stream.scrollHeight;
+      };
+
+      // Seed intro
+      COACH_INTRO.forEach(line => addBubble('lumi', line.replace('{name}', u.firstName || 'there')));
+
+      // Input row
+      const input = el('input', { type: 'text', placeholder: 'Ask Lumi anything about your money…',
+        style: { flex: '1', padding: '10px 14px', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--surface)' } });
+      const sendMessage = () => {
+        const q = input.value.trim();
+        if (!q) return;
+        addBubble('user', q);
+        input.value = '';
+        setTimeout(() => {
+          coachReply(q).forEach(line => addBubble('lumi', line));
+        }, 220);
+      };
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
+      const sendBtn = el('button', { class: 'btn primary', onclick: sendMessage }, 'Send');
+
+      const chatCol = el('div', { class: 'card' },
+        stream,
+        el('div', { style: { display: 'flex', gap: '8px', marginTop: '12px' } }, input, sendBtn)
+      );
+
+      // Right: suggestion chips
+      const suggest = (label) => el('button', {
+        class: 'chip navy',
+        style: { cursor: 'pointer', padding: '8px 14px', fontSize: '13px' },
+        onclick: () => { input.value = label; sendMessage(); }
+      }, label);
+      const sideCol = card('Try asking Lumi',
+        el('div', { style: { display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-start' } },
+          suggest("How's my savings rate?"),
+          suggest("Help me pay off credit card debt"),
+          suggest("Review my budget"),
+          suggest("Flag my subscriptions"),
+          suggest("Am I on track for the Italy trip?"),
+          suggest("How do I get to 800 credit?"),
+          suggest("Can I buy a house?"),
+          suggest("Will I be able to retire?"))
+      );
+
+      content.appendChild(el('div', { class: 'grid grid-dash' }, chatCol, sideCol));
+    },
     rewards: function (content) {
       const s = getState();
       const pts = rewardsPoints();
