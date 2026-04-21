@@ -83,7 +83,19 @@
     rewards:      todo('Luminate Rewards'),
     advisor:      todo('Advisor View'),
     settings:     todo('Settings'),
-    business:     todo('Business Suite'),
+    business: function (content) {
+      content.appendChild(viewHeader('Business Suite', 'Small-business banking and bookkeeping, inside Luminate.'));
+      content.appendChild(el('div', { class: 'card' },
+        el('h3', {}, '🏢 Coming soon'),
+        el('p', { class: 'muted' }, 'Luminate Business Suite turns your Luminate login into the operating system for your small business — no second dashboard, no re-keying transactions.'),
+        el('ul', { style: { paddingLeft: '20px', marginTop: '12px', color: 'var(--text-muted)' } },
+          el('li', {}, 'Business checking, corporate card, and payroll funding under one roof.'),
+          el('li', {}, 'Cash-flow forecasting with scheduled invoices and recurring vendor bills.'),
+          el('li', {}, 'Receipt capture + auto-categorization with audit-ready CSV export for your CPA.'),
+          el('li', {}, 'Luminate Capital lines of credit and SBA-prep reports driven by real cash history.')
+        )
+      ));
+    },
     selfemployed: function (content) {
       content.appendChild(viewHeader('Freelancer Hub', 'The money side of working for yourself, finally simple.'));
       content.appendChild(el('div', { class: 'card' },
