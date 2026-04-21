@@ -81,7 +81,80 @@
     credit:       todo('Credit'),
     insights:     todo('AI Insights'),
     rewards:      todo('Luminate Rewards'),
-    advisor:      todo('Advisor View'),
+    advisor: function (content) {
+      const s = getState();
+      const u = s.user;
+      const risk = computeChurnRisk();
+      const tier = loyaltyTier();
+      const lumPos = s.accounts.filter(a => a.isLuminate && a.balance > 0).reduce((x, a) => x + a.balance, 0);
+      const extPos = s.accounts.filter(a => !a.isLuminate && a.balance > 0).reduce((x, a) => x + a.balance, 0);
+      const share = lumPos / Math.max(1, lumPos + extPos);
+
+      content.appendChild(viewHeader('Advisor View', 'Internal-only 360° for banker meetings with ' + (u.firstName || 'this member') + '.'));
+
+      // KPI strip
+      content.appendChild(el('div', { class: 'grid grid-4', style: { marginBottom: '16px' } },
+        kpi('Net worth', fmtMoneyShort(netWorth()), null, 'navy'),
+        kpi('Loyalty tier', tier.tier, null, 'success'),
+        kpi('Churn risk', risk + '%', null, risk > 50 ? 'warn' : ''),
+        kpi('Share of wallet', Math.round(share * 100) + '%', null)
+      ));
+
+      // Churn dial + share-of-wallet donut row
+      const riskLabel = risk < 25 ? 'Low' : risk < 55 ? 'Moderate' : 'Elevated';
+      const dial = el('div', {},
+        el('div', { class: 'bar ' + (risk < 25 ? 'success' : risk < 55 ? 'warn' : 'danger') }, el('span', { style: { width: risk + '%' } })),
+        el('div', { style: { display: 'flex', justifyContent: 'space-between', marginTop: '10px' } },
+          el('strong', {}, riskLabel + ' risk'),
+          el('span', { class: 'muted num' }, risk + ' / 100')),
+        el('p', { class: 'muted', style: { marginTop: '10px' } },
+          risk < 25 ? 'Core banking relationship is deep. Focus on investment & retirement cross-sell.' :
+          risk < 55 ? 'External deposits and loans suggest competitor relationships. Recommend consolidation incentive.' :
+                      'Member is actively using competitors for deposits or lending. Flag for retention outreach.')
+      );
+      const sowCanvas = el('canvas');
+      const sowCard = card('Share of wallet', el('div', { class: 'chart-wrap sm' }, sowCanvas));
+      ensureChart(() => new Chart(sowCanvas, {
+        type: 'doughnut',
+        data: {
+          labels: ['Luminate deposits', 'Held elsewhere'],
+          datasets: [{ data: [lumPos, extPos], backgroundColor: ['#0a1f44', '#e3e9f1'], borderWidth: 0 }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, cutout: '66%', plugins: { legend: { position: 'bottom' } } }
+      }));
+
+      content.appendChild(el('div', { class: 'grid grid-2', style: { marginBottom: '16px' } },
+        card('Churn risk', dial),
+        sowCard
+      ));
+
+      // Loyalty perks
+      content.appendChild(card(tier.tier + ' tier perks',
+        el('ul', { style: { paddingLeft: '20px', margin: 0, color: 'var(--text-muted)' } },
+          ...tier.perks.map(p => el('li', {}, p)))
+      ));
+
+      // Cross-sell cards
+      const offers = [];
+      if (extPos > 5000) offers.push({ emoji: '🏦', title: 'Consolidate external deposits',
+        body: fmtMoney(extPos) + ' sitting outside Luminate. A tier bump and 4.50% APY could recapture it.' });
+      if (s.accounts.some(a => a.type === 'loan' && !a.isLuminate))
+        offers.push({ emoji: '💳', title: 'Refinance external loan',
+          body: 'Member carries external loan balances. Run a Luminate refinance quote — 0.25% rate discount for autopay from checking.' });
+      if (s.user.creditScore >= 740) offers.push({ emoji: '✈️', title: 'Luminate Sapphire Travel',
+        body: 'Credit profile qualifies for Sapphire Travel: 3x on airfare, 60k sign-on bonus.' });
+      offers.push({ emoji: '🎓', title: 'Retirement consultation',
+        body: 'Offer a complimentary 30-min retirement review with a Luminate Invest advisor.' });
+
+      content.appendChild(card('Recommended next conversations',
+        el('div', { class: 'grid grid-2' },
+          ...offers.map(o => el('div', { class: 'insight' },
+            el('div', { class: 'insight-icon', style: { fontSize: '20px' } }, o.emoji),
+            el('div', { class: 'insight-body' }, el('strong', {}, o.title), el('p', {}, o.body))
+          ))
+        )
+      ));
+    },
     settings: function (content) {
       const s = getState();
       const u = s.user;
