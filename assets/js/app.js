@@ -278,6 +278,85 @@
     return { months, completion: d.toISOString().slice(0, 10) };
   }
 
+  /* ---------- Clarity Score (0-850 composite health metric) ---------- */
+  function clarityScore() {
+    const inc = averageMonthlyIncome(3);
+    const exp = averageMonthlyExpense(3);
+    const surplus = inc - exp;
+    // 1. Savings rate (target 20%)
+    const rate = inc > 0 ? Math.max(0, surplus / inc) : 0;
+    const cSav = Math.min(1, rate / 0.20);
+    // 2. Emergency fund (months of expenses in cash)
+    const cash = state.accounts.filter(a => a.type === 'checking' || a.type === 'savings')
+      .reduce((s, a) => s + Math.max(0, a.balance), 0);
+    const months = exp > 0 ? cash / exp : 6;
+    const cEmg = Math.min(1, months / 6);
+    // 3. Debt-to-income (total monthly bills / income)
+    const debtPayments = state.bills.reduce((s, b) => s + b.amount, 0);
+    const dti = inc > 0 ? debtPayments / inc : 0;
+    const cDti = Math.max(0, Math.min(1, 1 - (dti / 0.35)));
+    // 4. Credit utilization
+    const cc = state.accounts.find(a => a.type === 'credit' && a.limit);
+    const util = cc ? Math.abs(cc.balance) / cc.limit : 0;
+    const cUtil = Math.max(0, Math.min(1, 1 - (util / 0.50)));
+    // 5. Goals on track (avg progress ratio)
+    const goalProgress = state.goals && state.goals.length
+      ? state.goals.reduce((s, g) => s + Math.min(1, g.saved / Math.max(1, g.target)), 0) / state.goals.length
+      : 0.5;
+    const cGoals = goalProgress;
+    // Weighted composite
+    const composite = 0.30 * cSav + 0.25 * cEmg + 0.20 * cDti + 0.15 * cUtil + 0.10 * cGoals;
+    const score = Math.round(300 + composite * 550);
+    const band = score >= 800 ? { label: 'Exceptional', color: '#15a56a' }
+               : score >= 740 ? { label: 'Great',       color: '#3ca975' }
+               : score >= 670 ? { label: 'Good',        color: '#7bb7e0' }
+               : score >= 580 ? { label: 'Fair',        color: '#e8a63a' }
+               :                { label: 'Needs work',  color: '#d94848' };
+    const prevScore = score - Math.round(surplus > 0 ? 4 : -2);
+    return {
+      score, band, delta: score - prevScore,
+      components: {
+        savings: { value: Math.round(rate * 100), max: 20, pct: cSav },
+        emergency: { value: months.toFixed(1), max: 6, pct: cEmg },
+        dti: { value: Math.round(dti * 100), max: 35, pct: cDti },
+        utilization: { value: Math.round(util * 100), max: 50, pct: cUtil },
+        goals: { value: Math.round(goalProgress * 100), max: 100, pct: cGoals }
+      }
+    };
+  }
+
+  function moneyWeather() {
+    const cs = clarityScore();
+    const inc = averageMonthlyIncome(3);
+    const exp = averageMonthlyExpense(3);
+    const surplus = inc - exp;
+    const monthK = currentMonth();
+    const spend = monthlySpendByCategory(monthK);
+    const overBudget = state.budgets.filter(b => (spend[b.categoryId] || 0) > b.limit).length;
+    const completedGoal = (state.goals || []).some(g => g.saved >= g.target);
+    const bigMilestone = cs.score >= 780 || completedGoal || netWorth() >= 750000;
+    if (bigMilestone) {
+      return { state: 'milestone', label: 'Milestone month',
+        reason: 'Your Clarity Score is in the top band or you crossed a major goal/net-worth mark.',
+        actions: ['Celebrate with a small reward redemption', 'Raise the next goal target', 'Share the recap with a friend'] };
+    }
+    if (surplus < 0 || cs.score < 580 || overBudget >= 3) {
+      return { state: 'storm', label: 'Stormy',
+        reason: surplus < 0 ? 'Expenses are outpacing income this month.' :
+          cs.score < 580 ? 'Clarity Score is below Fair — one or more pillars need attention.' :
+          overBudget + ' category budgets are blown — spending is drifting.',
+        actions: ['Review the top 3 biggest categories with Lumi', 'Pause one subscription for 60 days', 'Move $100 to the emergency fund tonight'] };
+    }
+    if (surplus < 200 || overBudget >= 1) {
+      return { state: 'mixed', label: 'Mixed skies',
+        reason: 'You\'re stable but tight. A small shift would put you clearly in the sun.',
+        actions: ['Trim dining by 15% this month', 'Auto-route $50 more to savings', 'Ask Lumi what a 2% raise would do'] };
+    }
+    return { state: 'clear', label: 'Clear skies',
+      reason: 'Surplus is healthy, budgets are holding, goals are advancing.',
+      actions: ['Consider bumping an emergency-fund month', 'Increase a retirement contribution 1%', 'Plan the next life goal with Lumi'] };
+  }
+
   /* ---------- Churn & loyalty (Advisor) ---------- */
   function computeChurnRisk() {
     const extBalance = state.accounts.filter(a => !a.isLuminate && a.balance > 0).reduce((s, a) => s + a.balance, 0);
@@ -497,7 +576,7 @@
     fmtMoney, fmtMoneyShort, fmtDate, fmtDateShort, fmtRelative, monthKey, currentMonth, lastNMonthKeys,
     monthlySpendByCategory, monthlyIncome, monthlyExpense, averageMonthlyExpense, averageMonthlyIncome,
     netWorth, assets, liabilities, safeToSpend, cashFlowForecast, detectSubscriptions,
-    computeChurnRisk, loyaltyTier, rewardsPoints,
+    computeChurnRisk, loyaltyTier, rewardsPoints, clarityScore, moneyWeather,
     GOAL_TEMPLATES, recommendMonthly, projectGoal,
     getCategory, getAccount, el, h, cls, COACH_INTRO, coachReply
   };
