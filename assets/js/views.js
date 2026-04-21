@@ -84,7 +84,19 @@
     advisor:      todo('Advisor View'),
     settings:     todo('Settings'),
     business:     todo('Business Suite'),
-    selfemployed: todo('Freelancer Hub'),
+    selfemployed: function (content) {
+      content.appendChild(viewHeader('Freelancer Hub', 'The money side of working for yourself, finally simple.'));
+      content.appendChild(el('div', { class: 'card' },
+        el('h3', {}, '💼 Coming soon'),
+        el('p', { class: 'muted' }, 'Luminate Freelancer Hub handles the messy parts of self-employment — income smoothing, quarterly taxes, and retirement on your terms.'),
+        el('ul', { style: { paddingLeft: '20px', marginTop: '12px', color: 'var(--text-muted)' } },
+          el('li', {}, 'Variable-income smoothing: a personal paycheck from lumpy client payments.'),
+          el('li', {}, 'Automatic 1099 and quarterly-estimated-tax set-asides in Luminate High-Yield.'),
+          el('li', {}, 'Business-vs-personal transaction sorting with a single toggle.'),
+          el('li', {}, 'Solo 401(k) and SEP-IRA calculators built for freelancer cash flow.')
+        )
+      ));
+    },
     homebuyer: function (content) {
       content.appendChild(viewHeader('Homebuyer Journey', 'From saving your down payment to closing day.'));
       content.appendChild(el('div', { class: 'card' },
