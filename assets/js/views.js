@@ -73,7 +73,130 @@
     dashboard:    todo('Dashboard'),
     transactions: todo('Transactions'),
     accounts:     todo('Accounts'),
-    budgets:      todo('Budgets'),
+    budgets: function (content) {
+      const s = getState();
+      // Month state is local to the view
+      const monthKeys = lastNMonthKeys(12);
+      let selectedMonth = (s._uiBudgetMonth && monthKeys.includes(s._uiBudgetMonth))
+        ? s._uiBudgetMonth : currentMonth();
+
+      const labelFor = (k) => {
+        const [y, m] = k.split('-'); return new Date(+y, +m - 1, 1)
+          .toLocaleString('en-US', { month: 'long', year: 'numeric' });
+      };
+
+      const monthSel = el('select', {},
+        ...monthKeys.slice().reverse().map(k =>
+          el('option', { value: k, selected: k === selectedMonth ? 'selected' : null }, labelFor(k))));
+      monthSel.addEventListener('change', () => {
+        setState(st => { st._uiBudgetMonth = monthSel.value; });
+        render();
+      });
+
+      const openAddBudget = () => {
+        const used = new Set(s.budgets.map(b => b.categoryId));
+        const candidates = s.categories.filter(c =>
+          !used.has(c.id) && c.id !== 'income' && c.id !== 'transfer');
+        const catSel = el('select', {}, ...candidates.map(c =>
+          el('option', { value: c.id }, c.icon + '  ' + c.name)));
+        const limit = el('input', { type: 'number', placeholder: '200', step: '10' });
+        const rollover = el('input', { type: 'checkbox' });
+        const modal = el('div', {},
+          el('h2', {}, 'Add budget'),
+          candidates.length === 0
+            ? el('p', { class: 'muted' }, 'Every category already has a budget — edit an existing one instead.')
+            : el('div', {},
+                el('div', { class: 'form-row' }, el('label', {}, 'Category'), catSel),
+                el('div', { class: 'form-row' }, el('label', {}, 'Monthly limit'), limit),
+                el('div', { class: 'form-row' },
+                  el('label', { style: { display: 'flex', gap: '8px', alignItems: 'center', textTransform: 'none', letterSpacing: 0 } },
+                    rollover, el('span', {}, 'Roll unused over to next month')))),
+          el('div', { class: 'modal-actions' },
+            el('button', { class: 'btn', onclick: closeModal }, 'Cancel'),
+            candidates.length > 0 ? el('button', { class: 'btn primary', onclick: () => {
+              const lim = parseFloat(limit.value);
+              if (!lim || lim <= 0) { toast('Enter a limit'); return; }
+              setState(st => st.budgets.push({
+                id: 'b_' + Math.random().toString(36).slice(2, 7),
+                categoryId: catSel.value, limit: lim, rollover: rollover.checked
+              }));
+              closeModal(); toast('Budget added ✓'); render();
+            }}, 'Save budget') : null)
+        );
+        openModal(modal);
+      };
+
+      const openEditBudget = (b) => {
+        const cat = getCategory(b.categoryId);
+        const limit = el('input', { type: 'number', value: b.limit, step: '10' });
+        const rollover = el('input', { type: 'checkbox', checked: b.rollover ? 'checked' : null });
+        const modal = el('div', {},
+          el('h2', {}, cat.icon + ' ' + cat.name + ' budget'),
+          el('div', { class: 'form-row' }, el('label', {}, 'Monthly limit'), limit),
+          el('div', { class: 'form-row' },
+            el('label', { style: { display: 'flex', gap: '8px', alignItems: 'center', textTransform: 'none', letterSpacing: 0 } },
+              rollover, el('span', {}, 'Roll unused over to next month'))),
+          el('div', { class: 'modal-actions' },
+            el('button', { class: 'btn', style: { color: 'var(--danger)', marginRight: 'auto' }, onclick: () => {
+              setState(st => { st.budgets = st.budgets.filter(x => x.id !== b.id); });
+              closeModal(); toast('Budget removed'); render();
+            }}, 'Delete'),
+            el('button', { class: 'btn', onclick: closeModal }, 'Cancel'),
+            el('button', { class: 'btn primary', onclick: () => {
+              setState(st => {
+                const m = st.budgets.find(x => x.id === b.id);
+                if (!m) return;
+                m.limit = parseFloat(limit.value) || m.limit;
+                m.rollover = rollover.checked;
+              });
+              closeModal(); toast('Budget updated ✓'); render();
+            }}, 'Save'))
+        );
+        openModal(modal);
+      };
+
+      const spendByCat = monthlySpendByCategory(selectedMonth);
+      const totalBudget = s.budgets.reduce((x, b) => x + b.limit, 0);
+      const totalSpent  = s.budgets.reduce((x, b) => x + (spendByCat[b.categoryId] || 0), 0);
+      const overCount = s.budgets.filter(b => (spendByCat[b.categoryId] || 0) > b.limit).length;
+
+      content.appendChild(viewHeader('Budgets', 'Set a ceiling for every category, then watch the bars.',
+        [monthSel, el('button', { class: 'btn primary', onclick: openAddBudget }, '+ Add budget')]));
+
+      // Summary strip
+      content.appendChild(el('div', { class: 'grid grid-4', style: { marginBottom: '16px' } },
+        kpi('Budgeted',   fmtMoney(totalBudget, { cents: false }), null, 'navy'),
+        kpi('Spent',      fmtMoney(totalSpent,  { cents: false }),
+          { text: Math.round((totalSpent / Math.max(1, totalBudget)) * 100) + '% of plan',
+            positive: totalSpent <= totalBudget, negative: totalSpent > totalBudget }),
+        kpi('Remaining',  fmtMoney(Math.max(0, totalBudget - totalSpent), { cents: false }), null, 'success'),
+        kpi('Over budget',overCount + ' / ' + s.budgets.length, null, overCount ? 'warn' : 'success')
+      ));
+
+      // Budget rows
+      const rows = s.budgets.slice().sort((a, b) => (spendByCat[b.categoryId] || 0) / Math.max(1, b.limit)
+                                                  - (spendByCat[a.categoryId] || 0) / Math.max(1, a.limit));
+      const rowsBody = el('div', {}, ...rows.map(b => {
+        const cat = getCategory(b.categoryId);
+        const spent = spendByCat[b.categoryId] || 0;
+        const pct = Math.round((spent / b.limit) * 100);
+        const variant = pct < 75 ? 'success' : pct < 100 ? 'warn' : 'danger';
+        const remaining = b.limit - spent;
+        return el('div', { class: 'budget-row', style: { cursor: 'pointer' }, onclick: () => openEditBudget(b) },
+          el('div', { class: 'meta' },
+            el('div', { class: 'cat-dot', style: { background: cat.color } }, cat.icon),
+            el('div', {},
+              el('strong', {}, cat.name),
+              el('div', { class: 'subtle' },
+                fmtMoney(spent, { cents: false }) + ' of ' + fmtMoney(b.limit, { cents: false }) +
+                (b.rollover ? ' · rolls over' : '') +
+                (spent > b.limit ? ' · ⚠ over by ' + fmtMoney(spent - b.limit, { cents: false }) : '')))),
+          el('div', {}, progressBar(pct, variant)),
+          el('div', { class: cls('num', remaining < 0 ? 'neg' : ''), style: { textAlign: 'right', fontWeight: 600 } },
+            fmtMoney(remaining, { cents: false })));
+      }));
+      content.appendChild(card('Category budgets · ' + labelFor(selectedMonth), rowsBody));
+    },
     goals: function (content) {
       const s = getState();
       const goals = s.goals || [];
