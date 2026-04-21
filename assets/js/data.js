@@ -268,6 +268,7 @@
       creditHistory: buildCreditHistory(),
       onboarded: true,
       firstNameConfirmed: false,
+      disc: { D: 0, I: 0, S: 0, C: 0, primary: null, taken: false },
       theme: 'light'
     };
   }

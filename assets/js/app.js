@@ -414,6 +414,48 @@
   }
 
   /* ---------- Onboarding ---------- */
+  const DISC_QUESTIONS = [
+    { q: 'When you get paid, your first instinct is to:',
+      opts: [{ k:'D', t:'Knock down the highest-rate debt immediately.' },
+             { k:'I', t:'Celebrate a small win — you earned it.' },
+             { k:'S', t:'Top up the emergency fund first.' },
+             { k:'C', t:'Review the month\'s numbers before anything moves.' }] },
+    { q: 'The best financial advice feels like:',
+      opts: [{ k:'D', t:'Bottom line, no fluff.' },
+             { k:'I', t:'Encouragement with real wins celebrated.' },
+             { k:'S', t:'Calm guidance, one small step at a time.' },
+             { k:'C', t:'Data, charts, and the exact math.' }] },
+    { q: 'Unexpected $500 windfall. You:',
+      opts: [{ k:'D', t:'Send it straight at the next big goal.' },
+             { k:'I', t:'Split it across fun + savings, tell someone about it.' },
+             { k:'S', t:'Set it aside for the next rainy day.' },
+             { k:'C', t:'Run a quick ROI comparison before deciding.' }] },
+    { q: 'Reviewing your budget feels best when you:',
+      opts: [{ k:'D', t:'Cut what isn\'t working and move on.' },
+             { k:'I', t:'Find wins worth sharing with others doing the same.' },
+             { k:'S', t:'Make small, steady adjustments — no big swings.' },
+             { k:'C', t:'Drill into every category to spot outliers.' }] },
+    { q: 'A financial risk (invest, start a business) feels:',
+      opts: [{ k:'D', t:'Exciting — go big or go home.' },
+             { k:'I', t:'Energizing if you\'ve got a team riding it with you.' },
+             { k:'S', t:'Worth it only once the safety net is rock solid.' },
+             { k:'C', t:'Acceptable after research and a proper model.' }] },
+    { q: 'The goal that matters most right now is:',
+      opts: [{ k:'D', t:'A big, ambitious number to conquer.' },
+             { k:'I', t:'Something that will make life more fun.' },
+             { k:'S', t:'Peace of mind — fewer financial worries.' },
+             { k:'C', t:'The numerically optimal outcome.' }] }
+  ];
+
+  function computeDiscPrimary(scores) {
+    const order = ['D', 'I', 'S', 'C'];
+    let best = order[0], hi = -1;
+    order.forEach(k => { if (scores[k] > hi) { hi = scores[k]; best = k; } });
+    return hi > 0 ? best : null;
+  }
+  const DISC_LABEL = { D: 'Dominance', I: 'Influence', S: 'Steadiness', C: 'Conscientiousness' };
+  const DISC_COLOR = { D: '#d94848', I: '#e8a63a', S: '#15a56a', C: '#7bb7e0' };
+
   function showNamePrompt() {
     const input = el('input', {
       type: 'text',
@@ -422,27 +464,69 @@
       style: { width: '100%', padding: '12px 14px', borderRadius: '10px',
                border: '1px solid var(--border)', background: 'var(--surface-2)' }
     });
-    const submit = () => {
+    const next = () => {
       const name = input.value.trim();
       if (name) state.user.firstName = name;
-      state.user.firstNameConfirmed = true;
       save();
       refreshUserChrome();
-      closeModal();
-      toast('Welcome to Luminate Horizon, ' + (state.user.firstName || 'friend') + '.');
-      render();
+      showDiscQuiz();
     };
-    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
-    const modal = el('div', {},
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') next(); });
+    openModal(el('div', {},
       el('h2', {}, 'Welcome to Luminate Horizon'),
       el('p', { class: 'muted', style: { marginBottom: '16px' } },
         'What should we call you? Everything stays on your device.'),
       el('div', { class: 'form-row' }, input),
       el('div', { class: 'modal-actions' },
-        el('button', { class: 'btn primary', onclick: submit }, 'Continue'))
-    );
-    openModal(modal);
+        el('button', { class: 'btn primary', onclick: next }, 'Continue'))));
     setTimeout(() => input.focus(), 30);
+  }
+
+  function showDiscQuiz() {
+    const scores = { D: 0, I: 0, S: 0, C: 0 };
+    const selections = new Array(DISC_QUESTIONS.length).fill(null);
+    const body = el('div', {});
+    DISC_QUESTIONS.forEach((item, qi) => {
+      body.appendChild(el('div', { style: { marginBottom: '14px' } },
+        el('strong', { style: { display: 'block', marginBottom: '8px', fontSize: '13px' } }, (qi + 1) + '. ' + item.q),
+        ...item.opts.map(opt => {
+          const btn = el('button', {
+            class: 'btn', style: { display: 'block', width: '100%', textAlign: 'left', marginBottom: '6px' },
+            onclick: () => {
+              if (selections[qi]) scores[selections[qi]]--;
+              scores[opt.k]++;
+              selections[qi] = opt.k;
+              body.querySelectorAll('[data-qi="' + qi + '"]').forEach(b => b.style.background = '');
+              btn.style.background = 'var(--lumi-200)';
+            }, 'data-qi': qi
+          }, opt.t);
+          return btn;
+        })));
+    });
+    const finish = (skipped) => {
+      if (!skipped && Object.values(scores).reduce((s, v) => s + v, 0) > 0) {
+        state.user.disc = { D: scores.D, I: scores.I, S: scores.S, C: scores.C, primary: computeDiscPrimary(scores), taken: true };
+      }
+      state.user.firstNameConfirmed = true;
+      save();
+      refreshUserChrome();
+      closeModal();
+      const disc = state.user.disc;
+      if (disc && disc.primary) {
+        toast(state.user.firstName + ' — your coach is tuned for ' + DISC_LABEL[disc.primary] + '.');
+      } else {
+        toast('Welcome to Luminate Horizon, ' + (state.user.firstName || 'friend') + '.');
+      }
+      render();
+    };
+    openModal(el('div', { style: { maxHeight: '70vh', overflowY: 'auto' } },
+      el('h2', {}, 'Two-minute coaching style'),
+      el('p', { class: 'muted', style: { marginBottom: '14px' } },
+        'Pick the option that feels most true for each. Lumi uses your DISC style to tune every nudge and reply — you can skip and take it later in Settings.'),
+      body,
+      el('div', { class: 'modal-actions' },
+        el('button', { class: 'btn', onclick: () => finish(true) }, 'Skip for now'),
+        el('button', { class: 'btn primary', onclick: () => finish(false) }, 'Finish & personalize'))));
   }
 
   function initOnboarding() {
@@ -518,6 +602,13 @@
     const name = state.user.firstName + (state.user.lastName ? ' ' + state.user.lastName : '');
     document.getElementById('nav-username').textContent = name || 'Member';
     document.getElementById('nav-avatar').textContent = (state.user.firstName || 'L').charAt(0).toUpperCase();
+    const small = document.querySelector('#sidebar .sidebar-user small');
+    const disc = state.user.disc && state.user.disc.primary;
+    if (small) {
+      small.textContent = disc
+        ? 'Luminate Premier · ' + disc + '-style'
+        : 'Luminate Premier';
+    }
   }
 
   /* ---------- AI Coach ---------- */
@@ -525,7 +616,33 @@
     "Hey {name} 👋 I'm Lumi, your AI financial coach. Ask me anything — budget tweaks, goal timelines, debt strategy, tax moves, or what Luminate product fits your situation.",
     "A few things I can do right now: summarize your month, find leaking subscriptions, build a debt payoff plan, or simulate what happens if you save $200 more/month."
   ];
+  function styleReply(lines, primary) {
+    if (!primary || !lines || !lines.length) return lines || [];
+    const out = lines.slice();
+    const first = out[0];
+    if (primary === 'D') {
+      out[0] = 'Bottom line: ' + first;
+      out.push('Take the action today — you\'ve got the margin.');
+    } else if (primary === 'I') {
+      out[0] = 'Love this — ' + first.charAt(0).toLowerCase() + first.slice(1);
+      out.push('You\'re already ahead of most people at your stage. Keep the momentum.');
+    } else if (primary === 'S') {
+      out[0] = 'You\'re in a steady spot. ' + first;
+      out.push('No rush — small consistent moves compound quietly.');
+    } else if (primary === 'C') {
+      out[0] = 'Here\'s the breakdown: ' + first;
+      out.push('Basis: 3-mo rolling averages, linear projection, current-rate inputs. Re-run anytime your income or debt changes.');
+    }
+    return out;
+  }
+
   function coachReply(q) {
+    const raw = _coachCore(q);
+    const primary = state.user.disc && state.user.disc.primary;
+    return styleReply(raw, primary);
+  }
+
+  function _coachCore(q) {
     const query = q.toLowerCase();
     const inc = averageMonthlyIncome(3);
     const exp = averageMonthlyExpense(3);
