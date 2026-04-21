@@ -616,6 +616,80 @@
     "Hey {name} 👋 I'm Lumi, your AI financial coach. Ask me anything — budget tweaks, goal timelines, debt strategy, tax moves, or what Luminate product fits your situation.",
     "A few things I can do right now: summarize your month, find leaking subscriptions, build a debt payoff plan, or simulate what happens if you save $200 more/month."
   ];
+  /* ---------- Scenario simulator ---------- */
+  function simulateScenario(query) {
+    const inc = averageMonthlyIncome(3);
+    const exp = averageMonthlyExpense(3);
+
+    // "save $X more" family
+    let m = query.match(/save\s+\$?([\d,]+)\s*(?:more|extra)?/);
+    if (m && /save|saving/.test(query)) {
+      const extra = parseInt(m[1].replace(/,/g, ''), 10);
+      if (extra > 0 && extra < 50000) {
+        const newSurplus = inc - exp + extra;
+        const newRate = inc > 0 ? (newSurplus / inc) * 100 : 0;
+        const yr1 = extra * 12 * 1.045;
+        const yr10 = extra * 12 * (Math.pow(1.06, 10) - 1) / 0.06;
+        return [
+          'If you added ' + fmtMoney(extra) + '/mo to savings, your savings rate becomes ' + newRate.toFixed(1) + '%.',
+          'Year 1 in Luminate High-Yield at 4.50% APY: ~' + fmtMoneyShort(yr1) + '.',
+          'Year 10 at a 6% balanced return: ~' + fmtMoneyShort(yr10) + '. That\'s the compounding cost of not doing it.'
+        ];
+      }
+    }
+    // "pay $X toward card/credit"
+    m = query.match(/pay\s+\$?([\d,]+)/);
+    if (m && /(card|credit|sapphire)/.test(query)) {
+      const pay = parseInt(m[1].replace(/,/g, ''), 10);
+      const cc = state.accounts.find(a => a.type === 'credit' && a.limit);
+      if (cc && pay > 0) {
+        const bal = Math.abs(cc.balance);
+        const newBal = Math.max(0, bal - pay);
+        const oldUtil = Math.round((bal / cc.limit) * 100);
+        const newUtil = Math.round((newBal / cc.limit) * 100);
+        const score = Math.max(5, Math.round((oldUtil - newUtil) * 0.7));
+        const interest = Math.round(pay * (cc.apr || 21.99) / 100 * 0.5);
+        return [
+          'Paying ' + fmtMoney(pay) + ' to your ' + cc.nickname + ' card cuts utilization from ' + oldUtil + '% to ' + newUtil + '%.',
+          'Expected score lift: ~+' + score + ' points by next statement.',
+          'Interest avoided over the next 6 months: ~' + fmtMoney(interest) + '.'
+        ];
+      }
+    }
+    // "max 401k"
+    if (/max(imize)?\s+(the\s+)?401\s*\(?k\)?/.test(query)) {
+      const limit = 23000;
+      const annInc = inc * 12;
+      const pct = annInc > 0 ? Math.round((limit / annInc) * 100) : 0;
+      const thirtyYr = limit * (Math.pow(1.07, 30) - 1) / 0.07;
+      return [
+        'Maxing 401(k) means contributing ' + fmtMoney(limit) + '/yr — about ' + pct + '% of your pre-tax income (' + fmtMoney(Math.round(limit / 12)) + '/mo).',
+        'Take-home drops ~' + fmtMoney(Math.round(limit / 12 * 0.72)) + '/mo after the tax deduction kicks in.',
+        'At a 7% long-term return, 30 years of maxing = ~' + fmtMoneyShort(thirtyYr) + ' before employer match.'
+      ];
+    }
+    // "cut/skip/pause <category> [by X%]"
+    m = query.match(/(?:cut|skip|stop|pause|trim)\s+(?:the\s+)?(\w+)(?:\s+by\s+(\d+)\s*%?)?/);
+    if (m) {
+      const name = m[1].toLowerCase();
+      const cat = state.categories.find(c => c.id === name || c.name.toLowerCase().includes(name));
+      if (cat) {
+        const spendMap = monthlySpendByCategory(currentMonth());
+        const monthSpend = spendMap[cat.id] || 0;
+        const pctCut = m[2] ? parseInt(m[2], 10) : 100;
+        const saved = monthSpend * (pctCut / 100);
+        if (saved > 0) {
+          return [
+            'Cutting ' + cat.name + ' by ' + pctCut + '% this month frees roughly ' + fmtMoney(saved) + '.',
+            'Routed to the Italy goal, that pulls the finish date in by ~' + Math.max(1, Math.ceil(saved / 360)) + ' month(s).',
+            'Or routed to the Sapphire card, you\'d drop utilization about ' + Math.round(saved / 12000 * 100) + ' percentage points.'
+          ];
+        }
+      }
+    }
+    return null;
+  }
+
   function styleReply(lines, primary) {
     if (!primary || !lines || !lines.length) return lines || [];
     const out = lines.slice();
@@ -644,6 +718,12 @@
 
   function _coachCore(q) {
     const query = q.toLowerCase();
+    // Scenario simulator (runs first)
+    if (/\bwhat if|simulate|scenario|would happen/.test(query) ||
+        /\bsave\b.*more|\bpay\b.*\b(card|credit)|\bmax\b.*401|\bcut|skip|trim\b/.test(query)) {
+      const sim = simulateScenario(query);
+      if (sim) return sim;
+    }
     const inc = averageMonthlyIncome(3);
     const exp = averageMonthlyExpense(3);
     const nw = netWorth();
@@ -680,6 +760,95 @@
       const subs = detectSubscriptions();
       return [`I detected ${subs.length} recurring charges costing ${fmtMoney(subs.reduce((s, x) => s + x.yearly, 0))}/yr.`,
               `Biggest: ${subs.slice(0, 3).map(s => s.merchant).join(', ')}. Want me to flag ones you haven't used lately?`];
+    }
+    // --- Expanded intent library (Stage 1A) ---
+    if (/emergency\s*fund|3\s*months?|6\s*months?/.test(query)) {
+      const cash = state.accounts.filter(a => a.type === 'checking' || a.type === 'savings')
+        .reduce((x, a) => x + Math.max(0, a.balance), 0);
+      const months = exp > 0 ? (cash / exp).toFixed(1) : '—';
+      return [`You\'ve got ${months} months of expenses in cash.`,
+              `Target is 3 months if single + stable, 6 months with dependents or volatile income. Luminate High-Yield at 4.50% APY is where it belongs.`];
+    }
+    if (/rent|apartment|can i afford/.test(query)) {
+      const m = query.match(/\$?([\d,]+)/);
+      const rent = m ? parseInt(m[1].replace(/,/g, ''), 10) : Math.round(inc * 0.30);
+      const ratio = inc > 0 ? (rent / inc) * 100 : 0;
+      return [`At ${fmtMoney(rent)}/mo, that\'s ${ratio.toFixed(0)}% of your take-home.`,
+              ratio <= 30 ? 'Comfortably in the 30%-rule zone.' :
+              ratio <= 40 ? 'Tight but workable — you\'d need to trim elsewhere.' :
+                            'Above 40% is the red zone. Lumi recommends looking 15–20% lower or renegotiating.'];
+    }
+    if (/tax\s*withhold|withholding|w[-\s]?4/.test(query)) {
+      return [`You pay roughly ${fmtMoney(Math.round(inc * 0.22))}/mo in federal income tax based on your income profile.`,
+              `If you got a big refund or owed a lot last April, we should revisit your W-4. Aim for within $500 either way — refunds are interest-free loans to the IRS.`];
+    }
+    if (/401\s*match|employer\s*match|match/.test(query)) {
+      return [`Most employers match 3–6% of salary. On your income that\'s ${fmtMoney(Math.round(inc * 12 * 0.04))}/yr in free money if you contribute enough to capture it.`,
+              `Rule of thumb: capture the full match before doing anything else — it\'s an immediate 100% return.`];
+    }
+    if (/hsa|health\s*savings/.test(query)) {
+      return [`HSA is the only triple-tax-advantaged account. 2026 limits: $4,300 individual / $8,550 family.`,
+              `If you have a high-deductible plan, max the HSA and invest it — after age 65 it acts like a traditional IRA with zero penalty on non-medical withdrawals.`];
+    }
+    if (/roth|traditional\s*ira|ira/.test(query)) {
+      return [`Roth = pay tax now, never again. Traditional = deduct now, pay tax in retirement.`,
+              `At your income, Roth is likely the better bet — you\'ll almost certainly be in a higher bracket later. 2026 Roth limit: $7,000.`];
+    }
+    if (/avalanche|snowball|debt\s*strategy/.test(query)) {
+      const debts = state.accounts.filter(a => a.balance < 0);
+      const total = Math.abs(debts.reduce((x, a) => x + a.balance, 0));
+      return [`Avalanche: pay minimums everywhere, throw every extra dollar at the highest-APR debt. Mathematically optimal — saves the most interest.`,
+              `Snowball: attack smallest balance first for psychological wins. Works better if motivation matters more than math. You\'ve got ${fmtMoney(total)} total, so either strategy closes it inside 3 years at $600/mo extra.`];
+    }
+    if (/refinance|refi|mortgage\s*rate/.test(query)) {
+      return [`Refi usually pays off when new rates are 0.75%+ below yours and you plan to stay 3+ years.`,
+              `Your mortgage is at 6.25% — today\'s market is around 6.35%, so not yet. Luminate will ping you the moment it crosses 5.50%.`];
+    }
+    if (/raise|negotiat.*salary|negotiat.*pay/.test(query)) {
+      return [`Three numbers to walk in with: your market rate (use Levels.fyi or Glassdoor), your past 12-month impact (quantify it), and a specific ask (% or dollar).`,
+              `A 5% raise on your income = ${fmtMoney(Math.round(inc * 12 * 0.05))}/yr. Invested for 30 years at 7%, that single raise compounds to ~${fmtMoneyShort(inc * 12 * 0.05 * (Math.pow(1.07, 30) - 1) / 0.07)}.`];
+    }
+    if (/buy\s*vs\s*rent|rent\s*vs\s*buy|should i buy/.test(query)) {
+      return [`The rough rule: if your home-price-to-annual-rent ratio is under 15, buying tends to win. Over 20, renting usually does. Between is coin-flip and depends on how long you stay.`,
+              `Don\'t forget: maintenance ~1% of home value/yr, closing costs ~3%, opportunity cost of the down payment. I can run real numbers if you tell me a price target.`];
+    }
+    if (/bonus|windfall|inheritance|tax\s*refund/.test(query)) {
+      return [`A healthy order of priorities: (1) top off emergency fund to 6 months, (2) capture any 401(k) match you\'re missing, (3) kill high-interest debt, (4) invest the rest in tax-advantaged accounts first.`,
+              `Fun rule: set aside 5% for something meaningful. You earned it.`];
+    }
+    if (/fire|financial\s*independence|retire\s*early/.test(query)) {
+      const annualExpense = exp * 12;
+      const fireNum = annualExpense * 25;
+      return [`Your FIRE number at today\'s spending: ${fmtMoneyShort(fireNum)} (25× annual expenses, 4% rule).`,
+              `At ${fmtMoneyShort(nw)} net worth today, you\'re ${Math.round(nw / fireNum * 100)}% of the way there. Most of the work is compounding, not contributing.`];
+    }
+    if (/baby|child|newborn|parent|expecting/.test(query)) {
+      return [`First-year all-in costs average $18,000–$25,000 before childcare. Start a sinking fund now.`,
+              `Critical moves inside month 1: add baby to insurance, open a 529 (up to $18k/yr per-person gift-tax-free), lock term life insurance before health events, update beneficiaries on every account.`];
+    }
+    if (/marriage|wedding|married|spouse/.test(query)) {
+      return [`Merging finances: three-account model works best. Joint for shared bills, two individual for personal spending. Transparent on everything, autonomous on small stuff.`,
+              `Financially, marriage is often a tax win at your income unless both of you earn in the top 5%. Let me know ballpark household income and I\'ll run the Luminate tax-bracket projection.`];
+    }
+    if (/job\s*loss|fired|laid\s*off|unemploy/.test(query)) {
+      return [`Your emergency fund covers about ${exp > 0 ? (state.accounts.filter(a => a.type === 'savings').reduce((x, a) => x + a.balance, 0) / exp).toFixed(1) : '—'} months at current burn. Cut subscriptions + dining first, those are ~${fmtMoney(Math.round(exp * 0.15))}/mo.`,
+              `COBRA is usually worth it if a pre-existing condition is in play; otherwise the ACA marketplace is cheaper. File for unemployment week one — most states have a waiting week.`];
+    }
+    if (/invest|portfolio|where should i put/.test(query)) {
+      return [`Simple three-fund works for 90% of people: VTI (total US), VXUS (international), BND (bonds). Age in bonds is a decent starting ratio — you\'re holding ${Math.round(state.investments.filter(i => i.symbol === 'BND').reduce((x, i) => x + i.shares * i.price, 0) / (netWorth() || 1) * 100)}% bonds today.`,
+              `Avoid timing the market. Dollar-cost-average monthly into index funds, then don\'t touch it. Luminate Invest automates this.`];
+    }
+    if (/diversif|concentrate|single\s*stock/.test(query)) {
+      return [`A single stock over 10% of your portfolio is the concentration line. You\'re clean on that today.`,
+              `Geographic split matters too — 30% international is the typical modern-portfolio recommendation. You\'re at ~${Math.round(state.investments.filter(i => i.symbol === 'VXUS').reduce((x, i) => x + i.shares * i.price, 0) / (netWorth() || 1) * 100)}%.`];
+    }
+    if (/529|college\s*fund|tuition/.test(query)) {
+      return [`A 529 grows tax-free when used for education. Average in-state public 4-year = ~$25k/yr today; figure 5% tuition inflation for planning.`,
+              `Target for a newborn: ~$40k by year 5, then let compounding finish the job. Luminate connects to every major 529 plan — let me know the child\'s state of residence.`];
+    }
+    if (/insurance|term\s*life|whole\s*life|umbrella/.test(query)) {
+      return [`Term life: yes if anyone depends on your income. 10× annual income, 20–30 year term is the default. Cheap at your age.`,
+              `Whole life: almost never (investment + insurance mixed = bad deal). Umbrella: yes if net worth > $500k, rental properties, or a pool.`];
     }
     if (/hi|hello|hey/.test(query))
       return [`Hey ${state.user.firstName || 'there'}! What's on your mind today?`];
