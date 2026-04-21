@@ -70,7 +70,154 @@
 
   /* ---------- Public registry ---------- */
   window.LuminateViews = {
-    dashboard:    todo('Dashboard'),
+    dashboard: function (content) {
+      const s = getState();
+      const u = s.user;
+      const inc = averageMonthlyIncome(3);
+      const exp = averageMonthlyExpense(3);
+      const surplus = inc - exp;
+      const savingsRate = inc > 0 ? (surplus / inc) * 100 : 0;
+      const nw = netWorth();
+      const sts = safeToSpend();
+
+      // Net-worth 12-mo approximation (same method as networth view)
+      const months = lastNMonthKeys(12);
+      const nwSeries = [];
+      let v = nw;
+      for (let i = months.length - 1; i >= 0; i--) {
+        nwSeries[i] = v;
+        v = v - (surplus * 0.9 + (Math.sin(i * 1.7) * Math.max(200, Math.abs(surplus) * 0.15)));
+      }
+
+      // Header
+      const greet = (h => h < 5 ? 'Working late' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening')(new Date().getHours());
+      content.appendChild(viewHeader(greet + ', ' + (u.firstName || 'friend'),
+        'Here\'s your financial picture across every account, today ' + fmtDateShort(new Date().toISOString().slice(0, 10)) + '.'));
+
+      // KPI strip
+      content.appendChild(el('div', { class: 'grid grid-4', style: { marginBottom: '20px' } },
+        kpi('Net worth', fmtMoneyShort(nw),
+          { text: (surplus >= 0 ? '▲ +' : '▼ ') + fmtMoneyShort(Math.abs(surplus)) + ' mo/mo', positive: surplus >= 0, negative: surplus < 0 },
+          'navy'),
+        kpi('Safe to spend', fmtMoney(sts, { cents: false }),
+          { text: 'through end of month' }, 'success'),
+        kpi('Monthly surplus', fmtMoney(surplus, { cents: false }),
+          { text: surplus >= 0 ? 'Growing your buffer' : 'Expenses outpacing income',
+            positive: surplus >= 0, negative: surplus < 0 }),
+        kpi('Savings rate', savingsRate.toFixed(1) + '%',
+          { text: savingsRate >= 15 ? 'On FI track' : 'Aim for 15%+',
+            positive: savingsRate >= 15 }, savingsRate >= 15 ? 'success' : 'warn')
+      ));
+
+      // Net-worth line + spending donut row
+      const nwCanvas = el('canvas');
+      ensureChart(() => new Chart(nwCanvas, {
+        type: 'line',
+        data: {
+          labels: months.map(k => { const [yy, mm] = k.split('-'); return new Date(+yy, +mm - 1, 1).toLocaleString('en-US', { month: 'short' }); }),
+          datasets: [{ label: 'Net worth', data: nwSeries, tension: 0.35,
+            borderColor: '#0a1f44', backgroundColor: 'rgba(123,183,224,0.22)',
+            fill: true, borderWidth: 2, pointRadius: 0 }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => fmtMoney(ctx.raw) } } },
+          scales: { y: { ticks: { callback: v => fmtMoneyShort(v) } } }
+        }
+      }));
+      const nwCard = card('Net worth · 12 months', el('div', { class: 'chart-wrap' }, nwCanvas),
+        [el('button', { class: 'btn ghost', onclick: () => navigate('networth') }, 'Details →')]);
+
+      const spend = monthlySpendByCategory(currentMonth());
+      const spendEntries = Object.entries(spend).sort((a, b) => b[1] - a[1]).slice(0, 6);
+      const donutCanvas = el('canvas');
+      ensureChart(() => new Chart(donutCanvas, {
+        type: 'doughnut',
+        data: {
+          labels: spendEntries.map(([id]) => getCategory(id).name),
+          datasets: [{
+            data: spendEntries.map(([, v]) => v),
+            backgroundColor: spendEntries.map(([id]) => getCategory(id).color),
+            borderWidth: 0
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false, cutout: '66%',
+          plugins: { legend: { position: 'bottom' }, tooltip: { callbacks: { label: ctx => ctx.label + ': ' + fmtMoney(ctx.raw) } } }
+        }
+      }));
+      const donutCard = card('Spending this month', el('div', { class: 'chart-wrap' }, donutCanvas),
+        [el('button', { class: 'btn ghost', onclick: () => navigate('budgets') }, 'Budgets →')]);
+
+      content.appendChild(el('div', { class: 'grid grid-dash', style: { marginBottom: '20px' } }, nwCard, donutCard));
+
+      // 90-day cash flow sparkline + bills-this-week
+      const flow = cashFlowForecast(90);
+      const flowCanvas = el('canvas');
+      ensureChart(() => new Chart(flowCanvas, {
+        type: 'line',
+        data: {
+          labels: flow.map(p => fmtDateShort(p.date)),
+          datasets: [{
+            label: 'Balance', data: flow.map(p => p.balance), tension: 0.3,
+            borderColor: '#15a56a', backgroundColor: 'rgba(21,165,106,0.16)',
+            fill: true, borderWidth: 2, pointRadius: 0
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => fmtMoney(ctx.raw) } } },
+          scales: { x: { ticks: { maxTicksLimit: 6 } }, y: { ticks: { callback: v => fmtMoneyShort(v) } } }
+        }
+      }));
+      const lowestPoint = flow.reduce((m, p) => p.balance < m.balance ? p : m, flow[0]);
+      const flowCard = card('Cash flow · 90 days', [
+        el('div', { class: 'chart-wrap sm' }, flowCanvas),
+        el('p', { class: 'muted', style: { marginTop: '10px', fontSize: '12px' } },
+          'Projected low point: ' + fmtMoney(lowestPoint.balance) + ' on ' + fmtDateShort(lowestPoint.date) + '.')
+      ]);
+
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const in7 = new Date(today); in7.setDate(in7.getDate() + 7);
+      const weekBills = s.bills
+        .filter(b => { const d = new Date(b.due + 'T00:00:00'); return d >= today && d <= in7; })
+        .sort((a, b) => a.due.localeCompare(b.due));
+      const billsCard = card('Due this week',
+        weekBills.length
+          ? el('div', {}, ...weekBills.map(b => {
+              const d = new Date(b.due + 'T00:00:00');
+              return el('div', { class: 'bill' },
+                el('div', { class: 'bill-date' },
+                  el('span', { class: 'day' }, String(d.getDate())),
+                  el('span', { class: 'mo' }, d.toLocaleString('en-US', { month: 'short' }))),
+                el('div', {}, el('strong', {}, b.name), el('div', { class: 'subtle' }, fmtRelative(b.due))),
+                el('span', { class: cls('chip', b.autopay ? 'success' : 'warn') }, b.autopay ? '⚡ Autopay' : 'Manual'),
+                el('span', { class: 'num' }, fmtMoney(b.amount)));
+            }))
+          : el('p', { class: 'muted' }, 'Nothing due in the next 7 days — enjoy.'),
+        [el('button', { class: 'btn ghost', onclick: () => navigate('bills') }, 'All bills →')]);
+
+      content.appendChild(el('div', { class: 'grid grid-dash', style: { marginBottom: '20px' } }, flowCard, billsCard));
+
+      // Goals on track carousel
+      if ((s.goals || []).length) {
+        content.appendChild(card('Life goals on track',
+          el('div', { class: 'grid grid-3' },
+            ...s.goals.slice(0, 3).map(g => {
+              const pct = g.target > 0 ? Math.min(100, (g.saved / g.target) * 100) : 0;
+              const proj = projectGoal(g);
+              return el('div', { class: 'goal', onclick: () => navigate('goals'), style: { cursor: 'pointer' } },
+                el('div', { class: 'goal-emoji' }, g.emoji),
+                el('div', { class: 'goal-name' }, g.name),
+                el('div', { class: 'goal-amt' },
+                  el('span', {}, fmtMoney(g.saved, { cents: false }) + ' / ' + fmtMoney(g.target, { cents: false })),
+                  el('span', { class: 'num' }, Math.round(pct) + '%')),
+                progressBar(pct, pct >= 100 ? 'success' : pct >= 50 ? '' : 'warn'),
+                el('div', { class: 'subtle' }, proj ? 'ETA · ' + fmtDateShort(proj.completion) : 'Set a monthly amount'));
+            })),
+          [el('button', { class: 'btn ghost', onclick: () => navigate('goals') }, 'All goals →')]));
+      }
+    },
     transactions: function (content) {
       const s = getState();
       if (!s._uiTxn) s._uiTxn = { q: '', cat: '', acct: '', from: '', to: '', pending: false, sort: 'date', dir: 'desc', page: 1 };
