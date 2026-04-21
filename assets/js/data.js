@@ -267,6 +267,7 @@
       creditScore: 782,
       creditHistory: buildCreditHistory(),
       onboarded: true,
+      firstNameConfirmed: false,
       theme: 'light'
     };
   }

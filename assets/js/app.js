@@ -335,9 +335,44 @@
   }
 
   /* ---------- Onboarding ---------- */
+  function showNamePrompt() {
+    const input = el('input', {
+      type: 'text',
+      value: state.user.firstName || '',
+      placeholder: 'First name',
+      style: { width: '100%', padding: '12px 14px', borderRadius: '10px',
+               border: '1px solid var(--border)', background: 'var(--surface-2)' }
+    });
+    const submit = () => {
+      const name = input.value.trim();
+      if (name) state.user.firstName = name;
+      state.user.firstNameConfirmed = true;
+      save();
+      refreshUserChrome();
+      closeModal();
+      toast('Welcome to Luminate Horizon, ' + (state.user.firstName || 'friend') + '.');
+      render();
+    };
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+    const modal = el('div', {},
+      el('h2', {}, 'Welcome to Luminate Horizon'),
+      el('p', { class: 'muted', style: { marginBottom: '16px' } },
+        'What should we call you? Everything stays on your device.'),
+      el('div', { class: 'form-row' }, input),
+      el('div', { class: 'modal-actions' },
+        el('button', { class: 'btn primary', onclick: submit }, 'Continue'))
+    );
+    openModal(modal);
+    setTimeout(() => input.focus(), 30);
+  }
+
   function initOnboarding() {
     const ob = document.getElementById('onboarding');
-    if (state.user && state.user.onboarded) { ob.classList.add('hide'); return; }
+    if (state.user && state.user.onboarded) {
+      ob.classList.add('hide');
+      if (!state.user.firstNameConfirmed) setTimeout(showNamePrompt, 120);
+      return;
+    }
     ob.classList.remove('hide');
     let step = 1;
     const dots = ob.querySelectorAll('.ob-dots span');

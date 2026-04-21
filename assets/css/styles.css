@@ -4,10 +4,10 @@
    ========================================================= */
 
 :root {
-  --navy: #0a1f44;
-  --navy-600: #112a5a;
-  --navy-500: #1a3a73;
-  --navy-400: #2a4d8f;
+  --navy: #0c173d;
+  --navy-600: #142356;
+  --navy-500: #1d3170;
+  --navy-400: #2b4490;
   --lumi: #7bb7e0;
   --lumi-200: #a9d0ea;
   --lumi-300: #8ec4e6;
@@ -39,8 +39,9 @@
   --sidebar-w: 248px;
   --header-h: 64px;
 
-  --ff: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  --ff-num: 'Inter', 'SF Mono', ui-monospace, monospace;
+  --ff: 'Josefin Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --ff-headline: 'Poppins', 'Josefin Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --ff-num: 'Josefin Sans', 'SF Mono', ui-monospace, monospace;
 }
 
 [data-theme="dark"] {
@@ -72,7 +73,8 @@ button { cursor: pointer; border: none; background: none; }
 a { color: var(--lumi-600); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
-h1, h2, h3, h4 { margin: 0; font-weight: 700; color: var(--text); letter-spacing: -0.01em; }
+h1, h2, h3, h4 { margin: 0; font-family: var(--ff-headline); font-weight: 700; color: var(--text); letter-spacing: -0.01em; }
+.kpi-value, .credit-score, .view-title h1, .goal-name, .ob-logo-text { font-family: var(--ff-headline); font-weight: 700; }
 h1 { font-size: 28px; }
 h2 { font-size: 20px; }
 h3 { font-size: 16px; }
