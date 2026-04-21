@@ -85,7 +85,19 @@
     settings:     todo('Settings'),
     business:     todo('Business Suite'),
     selfemployed: todo('Freelancer Hub'),
-    homebuyer:    todo('Homebuyer Journey'),
+    homebuyer: function (content) {
+      content.appendChild(viewHeader('Homebuyer Journey', 'From saving your down payment to closing day.'));
+      content.appendChild(el('div', { class: 'card' },
+        el('h3', {}, '🔑 Coming soon'),
+        el('p', { class: 'muted' }, 'Luminate Homebuyer guides you through the biggest purchase of your life with real numbers, not guesswork.'),
+        el('ul', { style: { paddingLeft: '20px', marginTop: '12px', color: 'var(--text-muted)' } },
+          el('li', {}, 'Affordability calculator that pulls in your real income, debts, and savings.'),
+          el('li', {}, 'Down-payment goal engine with Luminate High-Yield + first-time-buyer programs.'),
+          el('li', {}, 'Pre-approval readiness check against current Luminate Mortgage rates.'),
+          el('li', {}, 'Closing-cost forecasts and moving-fund planning, based on your target ZIP code.')
+        )
+      ));
+    },
     student: function (content) {
       content.appendChild(viewHeader('Student Center', 'Financial tools built for your student years.'));
       content.appendChild(el('div', { class: 'card' },
