@@ -111,8 +111,86 @@
         save(); render();
       }}, 'Reset');
 
+      const openAddTxn = () => {
+        const merchant = el('input', { type: 'text', placeholder: 'e.g. Trader Joe\'s' });
+        const desc     = el('input', { type: 'text', placeholder: 'Optional note' });
+        const amt      = el('input', { type: 'number', step: '0.01', placeholder: '24.95' });
+        const typeSel  = el('select', {},
+          el('option', { value: 'expense' }, 'Expense'),
+          el('option', { value: 'income' },  'Income'));
+        const dateIn   = el('input', { type: 'date', value: new Date().toISOString().slice(0, 10) });
+        const catSel2  = el('select', {}, ...s.categories.map(c =>
+          el('option', { value: c.id }, c.icon + '  ' + c.name)));
+        const acctSel2 = el('select', {}, ...s.accounts.map(a =>
+          el('option', { value: a.id }, a.nickname + ' ····' + a.mask)));
+        const modal = el('div', {},
+          el('h2', {}, '+ Add transaction'),
+          el('div', { class: 'form-row' }, el('label', {}, 'Merchant'), merchant),
+          el('div', { class: 'form-row' }, el('label', {}, 'Description'), desc),
+          el('div', { class: 'grid grid-2' },
+            el('div', { class: 'form-row' }, el('label', {}, 'Amount'), amt),
+            el('div', { class: 'form-row' }, el('label', {}, 'Type'),   typeSel)),
+          el('div', { class: 'grid grid-2' },
+            el('div', { class: 'form-row' }, el('label', {}, 'Date'),     dateIn),
+            el('div', { class: 'form-row' }, el('label', {}, 'Category'), catSel2)),
+          el('div', { class: 'form-row' }, el('label', {}, 'Account'), acctSel2),
+          el('div', { class: 'modal-actions' },
+            el('button', { class: 'btn', onclick: closeModal }, 'Cancel'),
+            el('button', { class: 'btn primary', onclick: () => {
+              if (!merchant.value.trim() || !amt.value) { toast('Fill in merchant and amount'); return; }
+              const raw = Math.abs(parseFloat(amt.value));
+              const signed = typeSel.value === 'income' ? raw : -raw;
+              setState(st => st.transactions.unshift({
+                id: 'tx_' + Math.random().toString(36).slice(2, 8),
+                accountId: acctSel2.value,
+                date: dateIn.value,
+                merchant: merchant.value.trim(),
+                description: desc.value.trim(),
+                amount: signed,
+                category: typeSel.value === 'income' ? 'income' : catSel2.value,
+                pending: false
+              }));
+              closeModal(); toast('Transaction added ✓'); render();
+            }}, 'Save'))
+        );
+        openModal(modal);
+      };
+
+      const openEditTxn = (t) => {
+        const catSel3 = el('select', {}, ...s.categories.map(c =>
+          el('option', { value: c.id, selected: c.id === t.category ? 'selected' : null },
+            c.icon + '  ' + c.name)));
+        const cat = getCategory(t.category);
+        const modal = el('div', {},
+          el('h2', {}, 'Edit transaction'),
+          el('div', {
+            style: { display: 'flex', gap: '12px', alignItems: 'center',
+                     padding: '12px', background: 'var(--surface-2)', borderRadius: '10px', marginBottom: '16px' }
+          },
+            el('div', { class: 'txn-icon', style: { background: cat.color, color: '#fff' } }, cat.icon),
+            el('div', { style: { flex: '1' } },
+              el('strong', {}, t.merchant),
+              el('div', { class: 'subtle' }, fmtDate(t.date) + (t.pending ? ' · Pending' : ''))),
+            el('span', { class: cls('num', t.amount >= 0 ? 'pos' : 'neg'), style: { fontWeight: 700 } },
+              (t.amount >= 0 ? '+' : '') + fmtMoney(t.amount))),
+          el('div', { class: 'form-row' }, el('label', {}, 'Category'), catSel3),
+          el('div', { class: 'modal-actions' },
+            el('button', { class: 'btn', style: { color: 'var(--danger)', marginRight: 'auto' }, onclick: () => {
+              if (!confirm('Delete this transaction?')) return;
+              setState(st => { st.transactions = st.transactions.filter(x => x.id !== t.id); });
+              closeModal(); toast('Deleted'); render();
+            }}, 'Delete'),
+            el('button', { class: 'btn', onclick: closeModal }, 'Cancel'),
+            el('button', { class: 'btn primary', onclick: () => {
+              setState(st => { const m = st.transactions.find(x => x.id === t.id); if (m) m.category = catSel3.value; });
+              closeModal(); toast('Category updated ✓'); render();
+            }}, 'Save'))
+        );
+        openModal(modal);
+      };
+
       content.appendChild(viewHeader('Transactions', s.transactions.length + ' total transactions across your accounts.',
-        [el('button', { class: 'btn primary', onclick: () => toast('Add transaction — coming in next update') }, '+ Add')]));
+        [el('button', { class: 'btn primary', onclick: openAddTxn }, '+ Add')]));
 
       content.appendChild(el('div', { class: 'filter-bar' },
         qIn, catSel, acctSel,
@@ -176,7 +254,7 @@
       const tbody = el('tbody', {}, ...slice.map(t => {
         const cat = getCategory(t.category);
         const acc = getAccount(t.accountId);
-        return el('tr', { style: { cursor: 'pointer' }, onclick: () => toast('Row edit — wiring in next update') },
+        return el('tr', { style: { cursor: 'pointer' }, onclick: () => openEditTxn(t) },
           el('td', {}, fmtDateShort(t.date) + (t.pending ? ' ⏱' : '')),
           el('td', {}, el('div', { class: 'txn-merchant' },
             el('div', { class: 'txn-icon', style: { background: cat.color, color: '#fff' } }, cat.icon),
