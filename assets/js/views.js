@@ -78,7 +78,99 @@
     bills:        todo('Bills & Subscriptions'),
     networth:     todo('Net Worth'),
     investments:  todo('Investments'),
-    credit:       todo('Credit'),
+    credit: function (content) {
+      const s = getState();
+      const score = s.user.creditScore || 700;
+      const history = s.user.creditHistory || [];
+      const prev = history.length > 1 ? history[history.length - 2].score : score;
+      const delta = score - prev;
+      const band = score >= 800 ? { label: 'Exceptional', color: 'var(--success)' }
+                 : score >= 740 ? { label: 'Very good',  color: 'var(--success)' }
+                 : score >= 670 ? { label: 'Good',        color: 'var(--lumi-600)' }
+                 : score >= 580 ? { label: 'Fair',        color: 'var(--warning)' }
+                 :                { label: 'Needs work',  color: 'var(--danger)' };
+      const cc = getAccount('acc_lcc');
+      const balance = cc ? Math.abs(cc.balance) : 0;
+      const limit = cc && cc.limit ? cc.limit : 1;
+      const util = Math.round((balance / limit) * 100);
+      const utilVariant = util < 10 ? 'success' : util < 30 ? '' : util < 50 ? 'warn' : 'danger';
+
+      content.appendChild(viewHeader('Credit', 'Monitor your score, utilization, and on-time history.'));
+
+      // Hero
+      const hero = el('div', { class: 'card credit-hero', style: { marginBottom: '16px' } },
+        el('div', {},
+          el('div', { class: 'credit-score', style: { color: band.color } }, String(score)),
+          el('div', { class: 'muted', style: { marginTop: '4px', fontWeight: '600' } }, band.label),
+          el('div', { class: 'subtle' }, 'FICO® Score 8 · updated ' + fmtDateShort(new Date().toISOString().slice(0,10)))
+        ),
+        el('div', { class: 'credit-meta' },
+          el('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' } },
+            el('span', { class: cls('chip', delta >= 0 ? 'success' : 'danger') },
+              (delta >= 0 ? '▲ +' : '▼ ') + Math.abs(delta) + ' vs last month'),
+            el('span', { class: 'chip navy' }, 'Utilization ' + util + '%')),
+          el('p', { class: 'muted' }, delta >= 0
+            ? 'Nice — your score climbed this month. Keep utilization under 10% to push into the 800+ club.'
+            : 'A small dip this month. Often caused by utilization spikes or a new inquiry.'))
+      );
+      content.appendChild(hero);
+
+      // History chart + utilization card
+      const historyCanvas = el('canvas');
+      const historyCard = card('12-month history', el('div', { class: 'chart-wrap' }, historyCanvas));
+      ensureChart(() => new Chart(historyCanvas, {
+        type: 'line',
+        data: {
+          labels: history.map(p => fmtDateShort(p.date)),
+          datasets: [{
+            label: 'FICO Score',
+            data: history.map(p => p.score),
+            tension: 0.35, borderColor: '#0a1f44', backgroundColor: 'rgba(123,183,224,0.25)',
+            pointBackgroundColor: '#7bb7e0', fill: true, borderWidth: 2, pointRadius: 3
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { suggestedMin: 600, suggestedMax: 850 } }
+        }
+      }));
+
+      const utilCard = card('Credit utilization', [
+        el('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: '8px' } },
+          el('strong', {}, fmtMoney(balance) + ' / ' + fmtMoney(limit)),
+          el('span', { class: cls('chip', utilVariant === 'success' ? 'success' : utilVariant === 'warn' ? 'warn' : utilVariant === 'danger' ? 'danger' : 'navy') }, util + '%')),
+        progressBar(util, utilVariant),
+        el('p', { class: 'muted', style: { marginTop: '12px' } },
+          util < 10 ? 'Excellent — utilization under 10% is the sweet spot for score optimization.'
+          : util < 30 ? 'Healthy. Keep below 10% for the biggest score lift.'
+          : util < 50 ? 'Elevated. A mid-cycle payment could move this below 30%.'
+          :             'High utilization is dragging your score. A payment of '
+                        + fmtMoney(Math.max(0, balance - limit * 0.09))
+                        + ' would drop you to under 10%.')
+      ]);
+
+      content.appendChild(el('div', { class: 'grid grid-dash', style: { marginBottom: '16px' } }, historyCard, utilCard));
+
+      // Recommendations
+      const recs = [];
+      if (util >= 10) recs.push({ emoji: '💳', title: 'Knock down card utilization',
+        body: 'Pay ~' + fmtMoney(Math.max(0, balance - limit * 0.09)) + ' to push utilization under 10% — worth 12–22 points by next statement.' });
+      if (score < 800) recs.push({ emoji: '📈', title: 'Chase the 800 club',
+        body: 'Average age of accounts and on-time payment history are your biggest levers now. Avoid new inquiries for 90 days.' });
+      recs.push({ emoji: '📅', title: 'Set up autopay on every card',
+        body: 'Autopay-for-minimum is the cheapest insurance against a single missed payment tanking your score ~80 points.' });
+      recs.push({ emoji: '🪪', title: 'Pull your free annual report',
+        body: 'Check annualcreditreport.com once a year to catch errors that hurt your score — Luminate flags anything suspicious for you.' });
+
+      content.appendChild(card('Recommendations',
+        el('div', { class: 'grid grid-2' },
+          ...recs.map(r => el('div', { class: 'insight' },
+            el('div', { class: 'insight-icon', style: { fontSize: '20px' } }, r.emoji),
+            el('div', { class: 'insight-body' }, el('strong', {}, r.title), el('p', {}, r.body))
+          )))
+      ));
+    },
     insights:     todo('AI Insights'),
     rewards: function (content) {
       const s = getState();
