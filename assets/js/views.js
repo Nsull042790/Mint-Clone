@@ -80,7 +80,122 @@
     investments:  todo('Investments'),
     credit:       todo('Credit'),
     insights:     todo('AI Insights'),
-    rewards:      todo('Luminate Rewards'),
+    rewards: function (content) {
+      const s = getState();
+      const pts = rewardsPoints();
+      const tier = loyaltyTier();
+      const tierLadder = [
+        { name: 'Horizon',  min: 0,      mult: 1.0 },
+        { name: 'Azure',    min: 20000,  mult: 1.5 },
+        { name: 'Sapphire', min: 75000,  mult: 2.0 },
+        { name: 'Obsidian', min: 200000, mult: 3.0 }
+      ];
+      const lumBalance = s.accounts.filter(a => a.isLuminate).reduce((x, a) => x + Math.abs(a.balance), 0);
+      const nextTier = tierLadder.find(t => t.min > lumBalance) || tierLadder[tierLadder.length - 1];
+      const prevTier = [...tierLadder].reverse().find(t => t.min <= lumBalance) || tierLadder[0];
+      const tierPct = nextTier === prevTier ? 100
+                    : Math.round(((lumBalance - prevTier.min) / (nextTier.min - prevTier.min)) * 100);
+
+      content.appendChild(viewHeader('Luminate Rewards', 'Earn on every swipe, redeem on what matters.',
+        [el('button', { class: 'btn lumi', onclick: () => toast('✨ +250 bonus points added (demo)') }, '🎁 Claim daily bonus')]));
+
+      // Hero: points + tier progress
+      const hero = el('div', {
+        class: 'card',
+        style: {
+          background: 'linear-gradient(135deg, #0a1f44 0%, #1a3a73 55%, #5fa3d3 100%)',
+          color: '#fff', border: 'none', marginBottom: '16px'
+        }
+      },
+        el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '20px', flexWrap: 'wrap' } },
+          el('div', {},
+            el('div', { style: { fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'rgba(255,255,255,0.7)' } }, 'Available balance'),
+            el('div', { style: { fontSize: '52px', fontWeight: '800', letterSpacing: '-0.03em', lineHeight: '1' } }, pts.toLocaleString()),
+            el('div', { style: { color: 'rgba(255,255,255,0.8)', marginTop: '4px' } }, 'Luminate Points  ·  worth ≈ ' + fmtMoney(pts * 0.012))
+          ),
+          el('div', { style: { textAlign: 'right' } },
+            el('div', { style: { fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'rgba(255,255,255,0.7)' } }, 'Current tier'),
+            el('div', { style: { fontSize: '26px', fontWeight: '700', marginTop: '4px' } }, '💎 ' + tier.tier),
+            el('div', { style: { color: 'rgba(255,255,255,0.8)', marginTop: '2px' } }, prevTier.mult + 'x on every dollar')
+          )
+        ),
+        el('div', { style: { marginTop: '22px' } },
+          el('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'rgba(255,255,255,0.8)', marginBottom: '6px' } },
+            el('span', {}, prevTier.name),
+            el('span', {}, nextTier === prevTier ? 'Max tier reached 🏆' : tierPct + '% to ' + nextTier.name)),
+          el('div', { class: 'bar', style: { background: 'rgba(255,255,255,0.18)' } },
+            el('span', { style: { width: tierPct + '%', background: 'linear-gradient(90deg, #a9d0ea, #fff)' } }))
+        )
+      );
+      content.appendChild(hero);
+
+      // Redemption tiles (creative mix)
+      const tile = (emoji, title, subtitle, cost, onclick) => el('div', {
+        class: 'card', style: { cursor: 'pointer', transition: 'transform 0.12s' }, onclick
+      },
+        el('div', { style: { fontSize: '32px', marginBottom: '8px' } }, emoji),
+        el('strong', { style: { display: 'block', fontSize: '14px' } }, title),
+        el('div', { class: 'subtle', style: { marginBottom: '10px' } }, subtitle),
+        el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+          el('span', { class: cls('chip', pts >= cost ? 'navy' : '') }, cost.toLocaleString() + ' pts'),
+          pts >= cost ? el('span', { class: 'chip success' }, 'Available') : el('span', { class: 'subtle' }, 'Keep earning'))
+      );
+      const demoRedeem = (label, cost) => () => {
+        if (pts < cost) { toast('Not quite enough points yet.'); return; }
+        toast('🎉 Redeemed: ' + label + ' (demo)');
+      };
+      content.appendChild(el('div', { class: 'grid grid-4', style: { marginBottom: '16px' } },
+        tile('💸', 'Statement credit',      '$25 off your Sapphire card',     2500,  demoRedeem('$25 statement credit', 2500)),
+        tile('✈️', 'Travel portal',         '1.25¢/pt via Luminate Travel',   5000,  demoRedeem('Luminate Travel credit', 5000)),
+        tile('☕', 'Starbucks gift card',   '$10 delivered instantly',        1800,  demoRedeem('$10 Starbucks card', 1800)),
+        tile('🎁', 'Amazon gift card',      '$50 delivered instantly',        7500,  demoRedeem('$50 Amazon card', 7500)),
+        tile('🪙', 'Invest to grow',        'Auto-buy VTI with your points',  3000,  demoRedeem('Points-to-VTI conversion', 3000)),
+        tile('💝', 'Donate to charity',     'Luminate matches 10%',           1000,  demoRedeem('Charitable donation', 1000)),
+        tile('₿',  'Crypto reward',         '0.0001 BTC delivered to custody',12000, demoRedeem('Bitcoin reward', 12000)),
+        tile('🎰', 'Mystery box',           'Random gift 1k–10k value',       4000,  demoRedeem('Mystery box', 4000))
+      ));
+
+      // Featured + partners
+      const featured = el('div', {
+        class: 'card',
+        style: { background: 'linear-gradient(120deg, rgba(123,183,224,0.22), rgba(10,31,68,0.04))' }
+      },
+        el('div', { style: { display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' } },
+          el('div', { style: { fontSize: '42px' } }, '🏝️'),
+          el('div', { style: { flex: '1', minWidth: '200px' } },
+            el('strong', { style: { fontSize: '16px', display: 'block' } }, 'Double points weekend: all travel bookings'),
+            el('span', { class: 'muted' }, 'Through Sunday, earn 6x on airfare and 4x on hotels booked through Luminate Travel.')),
+          el('button', { class: 'btn primary', onclick: () => toast('Offer activated ✓') }, 'Activate offer'))
+      );
+      const partners = card('Partner perks',
+        el('div', { class: 'grid grid-2' },
+          el('div', { class: 'insight' }, el('div', { class: 'insight-icon' }, '🚗'),
+            el('div', { class: 'insight-body' }, el('strong', {}, 'Hertz Gold Plus'), el('p', {}, '10% off + free upgrade with any rental paid by Sapphire.'))),
+          el('div', { class: 'insight' }, el('div', { class: 'insight-icon' }, '🍷'),
+            el('div', { class: 'insight-body' }, el('strong', {}, 'OpenTable dining'), el('p', {}, 'Earn 5x points at 30,000+ restaurants when you book through Luminate.'))),
+          el('div', { class: 'insight' }, el('div', { class: 'insight-icon' }, '🏋️'),
+            el('div', { class: 'insight-body' }, el('strong', {}, 'Equinox membership'), el('p', {}, '$40/mo credit toward Equinox, billed monthly to your card.'))),
+          el('div', { class: 'insight' }, el('div', { class: 'insight-icon' }, '🛒'),
+            el('div', { class: 'insight-body' }, el('strong', {}, 'Whole Foods'), el('p', {}, '5% back + free delivery with Luminate Prime checkout.')))));
+      content.appendChild(el('div', { class: 'grid grid-2', style: { marginBottom: '16px' } }, featured, partners));
+
+      // Earn-more tips + recent redemptions
+      const tips = card('Ways to earn more',
+        el('ul', { style: { paddingLeft: '20px', margin: 0, color: 'var(--text-muted)' } },
+          el('li', {}, 'Set up direct deposit to Luminate Checking — +500 points/month.'),
+          el('li', {}, 'Add a Luminate Invest account and earn 2x on all trades.'),
+          el('li', {}, 'Refer a friend who opens a checking account — 7,500 bonus points each.'),
+          el('li', {}, 'Pay rent with Luminate Rent Reward — earn 1x on housing, no fees.')));
+      const recent = (s.rewardsRedemptions && s.rewardsRedemptions.length)
+        ? el('ul', { style: { paddingLeft: '0', listStyle: 'none', margin: 0 } },
+            ...s.rewardsRedemptions.slice(0, 5).map(r => el('li', { class: 'nw-row' },
+              el('span', {}, r.item || r.label || 'Redemption'),
+              el('span', { class: 'num' }, '−' + (r.points || 0).toLocaleString() + ' pts'))))
+        : el('div', { style: { textAlign: 'center', padding: '18px', color: 'var(--text-subtle)' } },
+            el('div', { style: { fontSize: '32px', marginBottom: '8px' } }, '🎁'),
+            el('div', {}, 'Your first redemption will appear here.'));
+      content.appendChild(el('div', { class: 'grid grid-2' }, tips, card('Recent redemptions', recent)));
+    },
     advisor: function (content) {
       const s = getState();
       const u = s.user;
