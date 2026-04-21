@@ -86,6 +86,18 @@
     business:     todo('Business Suite'),
     selfemployed: todo('Freelancer Hub'),
     homebuyer:    todo('Homebuyer Journey'),
-    student:      todo('Student Center')
+    student: function (content) {
+      content.appendChild(viewHeader('Student Center', 'Financial tools built for your student years.'));
+      content.appendChild(el('div', { class: 'card' },
+        el('h3', {}, '🎓 Coming soon'),
+        el('p', { class: 'muted' }, 'Luminate Student Center helps you stretch the semester and graduate with momentum — not just a diploma.'),
+        el('ul', { style: { paddingLeft: '20px', marginTop: '12px', color: 'var(--text-muted)' } },
+          el('li', {}, 'Semester budgeting with tuition, housing, meal-plan, and textbook categories.'),
+          el('li', {}, 'Student-loan payoff simulator with refinance scenarios and forgiveness eligibility.'),
+          el('li', {}, 'Side-hustle & scholarship income tracking, separated from Mom & Dad transfers.'),
+          el('li', {}, 'Credit-building roadmap designed for your first credit card and first apartment.')
+        )
+      ));
+    }
   };
 })();
