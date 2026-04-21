@@ -72,7 +72,114 @@
   window.LuminateViews = {
     dashboard:    todo('Dashboard'),
     transactions: todo('Transactions'),
-    accounts:     todo('Accounts'),
+    accounts: function (content) {
+      const s = getState();
+
+      const openLinkAccount = () => {
+        const institutions = ['Chase', 'Bank of America', 'Wells Fargo', 'Citi', 'Capital One', 'Ally', 'Fidelity', 'Vanguard', 'Schwab', 'Coinbase', 'American Express', 'Discover'];
+        const instSel = el('select', {}, ...institutions.map(n => el('option', { value: n }, n)));
+        const typeSel = el('select', {},
+          el('option', { value: 'checking' },   'Checking'),
+          el('option', { value: 'savings' },    'Savings'),
+          el('option', { value: 'credit' },     'Credit card'),
+          el('option', { value: 'investment' }, 'Brokerage'),
+          el('option', { value: 'retirement' }, 'Retirement / 401(k)'),
+          el('option', { value: 'loan' },       'Loan / mortgage'));
+        const nick = el('input', { type: 'text',   placeholder: 'Everyday Checking' });
+        const mask = el('input', { type: 'text',   placeholder: '4821',    maxlength: 4 });
+        const bal  = el('input', { type: 'number', placeholder: '1000.00', step: '0.01' });
+        const modal = el('div', {},
+          el('h2', {}, '🔗 Link a new account'),
+          el('p', { class: 'muted' }, 'Demo only — in production, Luminate connects to 12,000+ US institutions via secure OAuth.'),
+          el('div', { class: 'grid grid-2' },
+            el('div', { class: 'form-row' }, el('label', {}, 'Institution'), instSel),
+            el('div', { class: 'form-row' }, el('label', {}, 'Account type'), typeSel)),
+          el('div', { class: 'form-row' }, el('label', {}, 'Nickname'), nick),
+          el('div', { class: 'grid grid-2' },
+            el('div', { class: 'form-row' }, el('label', {}, 'Last 4'), mask),
+            el('div', { class: 'form-row' }, el('label', {}, 'Current balance'), bal)),
+          el('div', { class: 'modal-actions' },
+            el('button', { class: 'btn', onclick: closeModal }, 'Cancel'),
+            el('button', { class: 'btn primary', onclick: () => {
+              if (!nick.value.trim() || !bal.value) { toast('Fill in nickname and balance'); return; }
+              const balance = parseFloat(bal.value);
+              const neg = typeSel.value === 'credit' || typeSel.value === 'loan';
+              setState(st => st.accounts.push({
+                id: 'acc_' + Math.random().toString(36).slice(2, 7),
+                name: instSel.value + ' ' + typeSel.value,
+                nickname: nick.value.trim(),
+                type: typeSel.value,
+                institution: instSel.value,
+                mask: (mask.value || '0000').slice(-4),
+                balance: neg ? -Math.abs(balance) : Math.abs(balance),
+                isLuminate: false,
+                color: '#8591a8'
+              }));
+              closeModal(); toast('Account linked ✓'); render();
+            }}, 'Link account'))
+        );
+        openModal(modal);
+      };
+
+      content.appendChild(viewHeader('Accounts',
+        s.accounts.length + ' accounts · ' + fmtMoney(netWorth(), { cents: false }) + ' net worth',
+        [el('button', { class: 'btn primary', onclick: openLinkAccount }, '+ Link account')]));
+
+      const GROUPS = [
+        { label: 'Cash',              types: ['checking', 'savings'],         icon: '💵' },
+        { label: 'Credit cards',      types: ['credit'],                      icon: '💳' },
+        { label: 'Investments',       types: ['investment'],                  icon: '📈' },
+        { label: 'Retirement',        types: ['retirement'],                  icon: '🏖️' },
+        { label: 'Property & vehicles', types: ['property', 'vehicle'],       icon: '🏠' },
+        { label: 'Loans',             types: ['loan'],                        icon: '🧾' }
+      ];
+
+      content.appendChild(el('div', { class: 'grid grid-2' },
+        ...GROUPS.map(g => {
+          const accounts = s.accounts.filter(a => g.types.includes(a.type));
+          if (!accounts.length) return null;
+          const subtotal = accounts.reduce((x, a) => x + a.balance, 0);
+          const rows = accounts.map(a => {
+            const children = [
+              el('div', { class: 'acct-logo', style: { background: a.color || 'var(--navy)' } },
+                (a.institution || '?').slice(0, 1)),
+              el('div', { class: 'acct-info' },
+                el('strong', {}, a.nickname || a.name),
+                el('small', {},
+                  (a.isLuminate ? '⚡ ' : '') + (a.institution || '') + ' ····' + (a.mask || '') +
+                  (a.apr ? '  ·  ' + a.apr + '% APR' : '') +
+                  (a.limit ? '  ·  limit ' + fmtMoney(a.limit, { cents: false }) : ''))),
+              el('div', { class: cls('acct-bal', a.balance < 0 ? 'neg' : '') }, fmtMoney(a.balance))
+            ];
+            if (a.type === 'credit' && a.limit) {
+              const util = Math.min(100, Math.round((Math.abs(a.balance) / a.limit) * 100));
+              const variant = util < 30 ? 'success' : util < 50 ? 'warn' : 'danger';
+              children.push(el('div', {
+                style: { gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px' }
+              },
+                el('div', { style: { flex: '1' } }, progressBar(util, variant)),
+                el('span', { class: 'subtle', style: { minWidth: '60px', textAlign: 'right' } },
+                  util + '% used')));
+            }
+            return el('div', {
+              class: 'acct',
+              style: { cursor: 'default', display: 'grid',
+                       gridTemplateColumns: 'auto 1fr auto', gap: '12px', alignItems: 'center' }
+            }, ...children);
+          });
+
+          return card(g.icon + '  ' + g.label + ' · ' + accounts.length, [
+            el('div', {}, ...rows),
+            el('div', {
+              style: { display: 'flex', justifyContent: 'space-between',
+                       borderTop: '1px solid var(--border)', paddingTop: '10px', marginTop: '8px', fontWeight: 700 }
+            },
+              el('span', { class: 'muted' }, 'Subtotal'),
+              el('span', { class: cls('num', subtotal < 0 ? 'neg' : '') }, fmtMoney(subtotal)))
+          ]);
+        }).filter(Boolean)
+      ));
+    },
     budgets: function (content) {
       const s = getState();
       // Month state is local to the view
