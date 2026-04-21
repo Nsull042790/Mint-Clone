@@ -301,7 +301,114 @@
         )
       ));
     },
-    investments:  todo('Investments'),
+    investments: function (content) {
+      const s = getState();
+      const holdings = s.investments || [];
+      const valueOf = (h) => h.shares * h.price;
+      const totalValue = holdings.reduce((x, h) => x + valueOf(h), 0);
+      const dayChangePct = holdings.length
+        ? holdings.reduce((x, h) => x + (h.change || 0) * valueOf(h), 0) / Math.max(1, totalValue)
+        : 0;
+      const dayChange = totalValue * (dayChangePct / 100);
+
+      const bucketOf = (sym) => sym === 'BND' ? 'Bonds' : sym === 'BTC' ? 'Crypto' : 'Stocks';
+      const allocation = { Stocks: 0, Bonds: 0, Crypto: 0 };
+      holdings.forEach(h => { allocation[bucketOf(h.symbol)] += valueOf(h); });
+
+      content.appendChild(viewHeader('Investments', 'Your Luminate Invest brokerage and linked retirement accounts.'));
+
+      // KPI strip
+      content.appendChild(el('div', { class: 'grid grid-4', style: { marginBottom: '16px' } },
+        kpi('Portfolio value', fmtMoney(totalValue, { cents: false }),
+          { text: (dayChange >= 0 ? '▲ +' : '▼ ') + fmtMoney(Math.abs(dayChange), { cents: false }) + '  (' + dayChangePct.toFixed(2) + '%) today',
+            positive: dayChange >= 0, negative: dayChange < 0 }, 'navy'),
+        kpi('Stocks',  fmtMoneyShort(allocation.Stocks), null, 'success'),
+        kpi('Bonds',   fmtMoneyShort(allocation.Bonds),  null),
+        kpi('Crypto',  fmtMoneyShort(allocation.Crypto), null, 'warn')
+      ));
+
+      // Allocation donut + 30-day performance sparkline
+      const donut = el('canvas');
+      ensureChart(() => new Chart(donut, {
+        type: 'doughnut',
+        data: {
+          labels: ['Stocks', 'Bonds', 'Crypto'],
+          datasets: [{
+            data: [allocation.Stocks, allocation.Bonds, allocation.Crypto],
+            backgroundColor: ['#0a1f44', '#7bb7e0', '#e8a63a'],
+            borderWidth: 0
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false, cutout: '66%',
+          plugins: {
+            legend: { position: 'bottom' },
+            tooltip: { callbacks: { label: ctx => ctx.label + ': ' + fmtMoney(ctx.raw, { cents: false }) } }
+          }
+        }
+      }));
+      const donutCard = card('Asset allocation', el('div', { class: 'chart-wrap' }, donut));
+
+      // 30-day perf (random walk seeded from total + net gain trend)
+      const perfLabels = [];
+      const perfData = [];
+      const today = new Date();
+      let val = totalValue * 0.965;
+      for (let i = 29; i >= 0; i--) {
+        const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
+        perfLabels.push(d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+        const drift = (totalValue - val) / (i + 1);
+        val += drift + (Math.sin(i * 2.1) + Math.cos(i * 0.9)) * (totalValue * 0.0025);
+        perfData.push(val);
+      }
+      perfData[perfData.length - 1] = totalValue;
+      const perfCanvas = el('canvas');
+      ensureChart(() => new Chart(perfCanvas, {
+        type: 'line',
+        data: {
+          labels: perfLabels,
+          datasets: [{
+            label: 'Portfolio value', data: perfData, tension: 0.35,
+            borderColor: '#15a56a', backgroundColor: 'rgba(21,165,106,0.18)',
+            fill: true, borderWidth: 2, pointRadius: 0
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => fmtMoney(ctx.raw, { cents: false }) } } },
+          scales: { y: { ticks: { callback: v => fmtMoneyShort(v) } } }
+        }
+      }));
+      const perfCard = card('30-day performance', el('div', { class: 'chart-wrap' }, perfCanvas));
+
+      content.appendChild(el('div', { class: 'grid grid-2', style: { marginBottom: '16px' } }, donutCard, perfCard));
+
+      // Holdings table
+      content.appendChild(card('Holdings',
+        el('table', { class: 'table' },
+          el('thead', {}, el('tr', {},
+            el('th', {}, 'Symbol'),
+            el('th', {}, 'Name'),
+            el('th', { style: { textAlign: 'right' } }, 'Shares'),
+            el('th', { style: { textAlign: 'right' } }, 'Price'),
+            el('th', { style: { textAlign: 'right' } }, 'Day'),
+            el('th', { style: { textAlign: 'right' } }, 'Value'))),
+          el('tbody', {}, ...holdings.slice().sort((x, y) => valueOf(y) - valueOf(x)).map(h => {
+            const v = valueOf(h);
+            const up = (h.change || 0) >= 0;
+            return el('tr', {},
+              el('td', {}, el('div', { class: 'txn-merchant' },
+                el('div', { class: 'txn-icon' }, h.symbol.slice(0, 2)),
+                el('div', {}, el('strong', {}, h.symbol), el('small', {}, bucketOf(h.symbol))))),
+              el('td', {}, h.name),
+              el('td', { class: 'num', style: { textAlign: 'right' } }, h.shares.toLocaleString('en-US', { maximumFractionDigits: 4 })),
+              el('td', { class: 'num', style: { textAlign: 'right' } }, fmtMoney(h.price)),
+              el('td', { class: cls('num', up ? 'pos' : 'neg'), style: { textAlign: 'right' } },
+                (up ? '▲ +' : '▼ ') + Math.abs(h.change || 0).toFixed(2) + '%'),
+              el('td', { class: 'num', style: { textAlign: 'right', fontWeight: 600 } }, fmtMoney(v, { cents: false })));
+          })))
+      ));
+    },
     credit: function (content) {
       const s = getState();
       const score = s.user.creditScore || 700;
