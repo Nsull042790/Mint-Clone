@@ -75,7 +75,117 @@
     accounts:     todo('Accounts'),
     budgets:      todo('Budgets'),
     goals:        todo('Life Goals'),
-    bills:        todo('Bills & Subscriptions'),
+    bills: function (content) {
+      const s = getState();
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const in14 = new Date(today); in14.setDate(in14.getDate() + 14);
+      const bills = s.bills.slice().sort((a, b) => a.due.localeCompare(b.due));
+      const upcoming = bills.filter(b => {
+        const d = new Date(b.due + 'T00:00:00');
+        return d >= today && d <= in14;
+      });
+      const monthlyTotal = bills.reduce((x, b) => x + b.amount, 0);
+      const subs = detectSubscriptions();
+
+      const openAddBill = () => {
+        const name = el('input', { type: 'text', placeholder: 'e.g. Hulu' });
+        const amt  = el('input', { type: 'number', step: '0.01', placeholder: '14.99' });
+        const due  = el('input', { type: 'date' });
+        const catSel = el('select', {}, ...s.categories.map(c => el('option', { value: c.id }, c.name)));
+        const acctSel = el('select', {}, ...s.accounts.filter(a => a.type !== 'property' && a.type !== 'vehicle').map(a =>
+          el('option', { value: a.id }, a.nickname + ' ····' + a.mask)));
+        const autopay = el('input', { type: 'checkbox' });
+        const modal = el('div', {},
+          el('h2', {}, 'Add a bill'),
+          el('div', { class: 'form-row' }, el('label', {}, 'Name'), name),
+          el('div', { class: 'grid grid-2' },
+            el('div', { class: 'form-row' }, el('label', {}, 'Amount'), amt),
+            el('div', { class: 'form-row' }, el('label', {}, 'Next due'), due)),
+          el('div', { class: 'grid grid-2' },
+            el('div', { class: 'form-row' }, el('label', {}, 'Category'), catSel),
+            el('div', { class: 'form-row' }, el('label', {}, 'Pay from'), acctSel)),
+          el('div', { class: 'form-row' },
+            el('label', { style: { display: 'flex', gap: '8px', alignItems: 'center', textTransform: 'none', letterSpacing: 0 } },
+              autopay, el('span', {}, 'Enroll in autopay'))),
+          el('div', { class: 'modal-actions' },
+            el('button', { class: 'btn', onclick: closeModal }, 'Cancel'),
+            el('button', { class: 'btn primary', onclick: () => {
+              if (!name.value.trim() || !amt.value || !due.value) { toast('Fill all fields'); return; }
+              setState(st => st.bills.push({
+                id: 'bi_' + Math.random().toString(36).slice(2, 8),
+                name: name.value.trim(), amount: parseFloat(amt.value),
+                due: due.value, category: catSel.value, autopay: autopay.checked,
+                account: acctSel.value
+              }));
+              closeModal(); toast('Bill added ✓'); render();
+            }}, 'Save bill'))
+        );
+        openModal(modal);
+      };
+
+      content.appendChild(viewHeader('Bills & Subscriptions', fmtMoney(monthlyTotal) + ' scheduled this month across ' + bills.length + ' bills.',
+        [el('button', { class: 'btn primary', onclick: openAddBill }, '+ Add bill')]));
+
+      // Upcoming 14-day timeline
+      const timeline = upcoming.length
+        ? el('div', {}, ...upcoming.map(b => {
+            const d = new Date(b.due + 'T00:00:00');
+            return el('div', { class: 'bill' },
+              el('div', { class: 'bill-date' },
+                el('span', { class: 'day' }, String(d.getDate())),
+                el('span', { class: 'mo' }, d.toLocaleString('en-US', { month: 'short' }))),
+              el('div', {},
+                el('strong', {}, b.name),
+                el('div', { class: 'subtle' }, fmtRelative(b.due) + ' · ' + getCategory(b.category).name)),
+              el('span', { class: cls('chip', b.autopay ? 'success' : 'warn') }, b.autopay ? '⚡ Autopay' : 'Manual'),
+              el('span', { class: 'num' }, fmtMoney(b.amount)));
+          }))
+        : el('p', { class: 'muted' }, 'Nothing due in the next 14 days.');
+      content.appendChild(card('Due in the next 14 days', timeline));
+
+      // Monthly recurring table with autopay toggle
+      content.appendChild(card('All recurring bills',
+        el('table', { class: 'table' },
+          el('thead', {}, el('tr', {},
+            el('th', {}, 'Bill'),
+            el('th', {}, 'Category'),
+            el('th', {}, 'Next due'),
+            el('th', {}, 'Autopay'),
+            el('th', { style: { textAlign: 'right' } }, 'Amount'))),
+          el('tbody', {}, ...bills.map(b => {
+            const cat = getCategory(b.category);
+            const toggle = el('button', {
+              class: cls('chip', b.autopay ? 'success' : ''),
+              style: { cursor: 'pointer' },
+              onclick: () => {
+                setState(st => { const m = st.bills.find(x => x.id === b.id); if (m) m.autopay = !m.autopay; });
+                toast(b.autopay ? 'Autopay disabled' : 'Autopay enabled');
+                render();
+              }
+            }, b.autopay ? '⚡ On' : 'Off');
+            return el('tr', {},
+              el('td', {}, el('strong', {}, b.name)),
+              el('td', {}, el('span', { class: 'chip navy' }, cat.icon + ' ' + cat.name)),
+              el('td', {}, fmtDate(b.due)),
+              el('td', {}, toggle),
+              el('td', { class: 'num', style: { textAlign: 'right', fontWeight: 600 } }, fmtMoney(b.amount)));
+          })))
+      ));
+
+      // Detected subscriptions
+      const subsBody = subs.length
+        ? el('div', {}, ...subs.slice(0, 8).map(sub => el('div', { class: 'bill' },
+            el('div', { class: 'txn-icon' }, (sub.merchant || '?').slice(0, 1).toUpperCase()),
+            el('div', {},
+              el('strong', {}, sub.merchant),
+              el('div', { class: 'subtle' }, getCategory(sub.category).name + ' · last seen ' + fmtRelative(sub.lastSeen))),
+            el('span', { class: 'chip warn' }, fmtMoney(sub.yearly, { cents: false }) + '/yr'),
+            el('span', { class: 'num' }, fmtMoney(sub.amount) + '/mo'))))
+        : el('p', { class: 'muted' }, 'No recurring charges detected yet — come back after a couple of months of activity.');
+      content.appendChild(card('Detected subscriptions · ' + subs.length + ' found',
+        subsBody,
+        [el('button', { class: 'btn', onclick: () => toast('Canceled (demo)') }, 'Cancel selected (demo)')]));
+    },
     networth:     todo('Net Worth'),
     investments:  todo('Investments'),
     credit: function (content) {
