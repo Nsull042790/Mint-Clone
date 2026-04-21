@@ -289,6 +289,23 @@
     return d.toISOString().slice(0, 10);
   }
 
+  function seedRewardsRedemptions() {
+    const out = [];
+    const today = new Date();
+    const items = [
+      { item: '$50 Amazon gift card',      points: 7500,  daysAgo: 11 },
+      { item: '$25 statement credit',      points: 2500,  daysAgo: 34 },
+      { item: 'Luminate Travel credit · Delta LAX→JFK', points: 5200, daysAgo: 62 },
+      { item: '$10 Starbucks eGift',       points: 1800,  daysAgo: 88 },
+      { item: 'Points-to-VTI investment',  points: 3000,  daysAgo: 142 }
+    ];
+    items.forEach(x => {
+      const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - x.daysAgo);
+      out.push({ id: uid(), date: d.toISOString().slice(0, 10), item: x.item, points: x.points });
+    });
+    return out;
+  }
+
   function buildFreshState() {
     const accounts = seedAccounts();
     return {
@@ -301,7 +318,8 @@
       goals: seedGoals(),
       investments: INVESTMENTS.slice(),
       categories: CATEGORIES.slice(),
-      rules: []
+      rules: [],
+      rewardsRedemptions: seedRewardsRedemptions()
     };
   }
 

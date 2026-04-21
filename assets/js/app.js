@@ -337,7 +337,7 @@
   /* ---------- Onboarding ---------- */
   function initOnboarding() {
     const ob = document.getElementById('onboarding');
-    if (!freshRun && state.user && state.user.onboarded) { ob.classList.add('hide'); return; }
+    if (state.user && state.user.onboarded) { ob.classList.add('hide'); return; }
     ob.classList.remove('hide');
     let step = 1;
     const dots = ob.querySelectorAll('.ob-dots span');
