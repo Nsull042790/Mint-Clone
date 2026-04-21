@@ -74,7 +74,158 @@
     transactions: todo('Transactions'),
     accounts:     todo('Accounts'),
     budgets:      todo('Budgets'),
-    goals:        todo('Life Goals'),
+    goals: function (content) {
+      const s = getState();
+      const goals = s.goals || [];
+
+      const ring = (pct) => {
+        const r = 32, c = 2 * Math.PI * r;
+        const dash = (Math.max(0, Math.min(100, pct)) / 100) * c;
+        const ns = 'http://www.w3.org/2000/svg';
+        const svg = document.createElementNS(ns, 'svg');
+        svg.setAttribute('viewBox', '0 0 80 80'); svg.setAttribute('width', '80'); svg.setAttribute('height', '80');
+        const bg = document.createElementNS(ns, 'circle');
+        bg.setAttribute('cx', 40); bg.setAttribute('cy', 40); bg.setAttribute('r', r);
+        bg.setAttribute('fill', 'none'); bg.setAttribute('stroke', 'var(--border)'); bg.setAttribute('stroke-width', 8);
+        const fg = document.createElementNS(ns, 'circle');
+        fg.setAttribute('cx', 40); fg.setAttribute('cy', 40); fg.setAttribute('r', r);
+        fg.setAttribute('fill', 'none'); fg.setAttribute('stroke', '#7bb7e0'); fg.setAttribute('stroke-width', 8);
+        fg.setAttribute('stroke-linecap', 'round');
+        fg.setAttribute('stroke-dasharray', dash + ' ' + c);
+        fg.setAttribute('transform', 'rotate(-90 40 40)');
+        const label = document.createElementNS(ns, 'text');
+        label.setAttribute('x', 40); label.setAttribute('y', 45);
+        label.setAttribute('text-anchor', 'middle'); label.setAttribute('font-weight', '700');
+        label.setAttribute('fill', 'var(--navy)'); label.setAttribute('font-size', '16');
+        label.textContent = Math.round(pct) + '%';
+        svg.appendChild(bg); svg.appendChild(fg); svg.appendChild(label);
+        return svg;
+      };
+
+      const openEditGoal = (g) => {
+        const name = el('input',   { type: 'text',   value: g.name });
+        const target = el('input', { type: 'number', value: g.target, step: '100' });
+        const saved  = el('input', { type: 'number', value: g.saved,  step: '50' });
+        const monthly= el('input', { type: 'number', value: g.monthly,step: '25' });
+        const modal = el('div', {},
+          el('h2', {}, 'Edit goal · ' + g.emoji),
+          el('div', { class: 'form-row' }, el('label', {}, 'Name'), name),
+          el('div', { class: 'form-row' }, el('label', {}, 'Target amount'), target),
+          el('div', { class: 'grid grid-2' },
+            el('div', { class: 'form-row' }, el('label', {}, 'Already saved'), saved),
+            el('div', { class: 'form-row' }, el('label', {}, 'Monthly'), monthly)),
+          g.tip ? el('p', { class: 'muted', style: { marginTop: '-4px' } }, '💡 ' + g.tip) : null,
+          el('div', { class: 'modal-actions' },
+            el('button', { class: 'btn', style: { color: 'var(--danger)', marginRight: 'auto' }, onclick: () => {
+              if (!confirm('Delete "' + g.name + '"?')) return;
+              setState(st => { st.goals = st.goals.filter(x => x.id !== g.id); });
+              closeModal(); toast('Goal deleted'); render();
+            }}, 'Delete'),
+            el('button', { class: 'btn', onclick: closeModal }, 'Cancel'),
+            el('button', { class: 'btn primary', onclick: () => {
+              setState(st => {
+                const m = st.goals.find(x => x.id === g.id);
+                if (!m) return;
+                m.name = name.value.trim() || m.name;
+                m.target = parseFloat(target.value) || m.target;
+                m.saved = parseFloat(saved.value) || 0;
+                m.monthly = parseFloat(monthly.value) || 0;
+              });
+              closeModal(); toast('Goal updated ✓'); render();
+            }}, 'Save'))
+        );
+        openModal(modal);
+      };
+
+      const templateEmoji = { emergency: '🛟', vacation: '✈️', home_project: '🏡', home_down: '🔑', wedding: '💍', baby: '👶', car: '🚗', retirement: '🏖️', sabbatical: '🌴' };
+      const templateName  = { emergency: 'Emergency fund', vacation: 'Dream vacation', home_project: 'Home project', home_down: 'Home down payment', wedding: 'Wedding', baby: 'Growing family', car: 'New vehicle', retirement: 'Retirement', sabbatical: 'Sabbatical / break' };
+
+      const openNewGoal = () => {
+        const typeSel = el('select', {}, ...Object.keys(templateName).map(k =>
+          el('option', { value: k }, templateEmoji[k] + '  ' + templateName[k])));
+        const name = el('input', { type: 'text', placeholder: 'e.g. Italy 2026' });
+        const target = el('input', { type: 'number', placeholder: '6500', step: '100' });
+        const monthly = el('input', { type: 'number', placeholder: '360', step: '25' });
+        const reason = el('p', { class: 'muted', style: { fontSize: '12px' } }, '');
+
+        const refreshSuggestion = () => {
+          const key = typeSel.value;
+          const tmpl = GOAL_TEMPLATES[key];
+          if (!tmpl || !tmpl.calc) { reason.textContent = ''; return; }
+          const inc = averageMonthlyIncome(3);
+          const exp = averageMonthlyExpense(3);
+          try {
+            const out = tmpl.calc({ dependents: s.user.dependents, currentAge: 32 }, inc, exp);
+            target.value = out.target;
+            monthly.value = recommendMonthly(out.target, 0, 24);
+            reason.textContent = '💡 ' + (out.reason || 'Suggested based on your profile.');
+          } catch (e) { reason.textContent = ''; }
+          if (!name.value) name.value = templateName[key];
+        };
+        typeSel.addEventListener('change', refreshSuggestion);
+        setTimeout(refreshSuggestion, 0);
+
+        const modal = el('div', {},
+          el('h2', {}, 'New life goal'),
+          el('div', { class: 'form-row' }, el('label', {}, 'Goal type'), typeSel),
+          el('div', { class: 'form-row' }, el('label', {}, 'Name'), name),
+          el('div', { class: 'grid grid-2' },
+            el('div', { class: 'form-row' }, el('label', {}, 'Target amount'), target),
+            el('div', { class: 'form-row' }, el('label', {}, 'Monthly'), monthly)),
+          reason,
+          el('div', { class: 'modal-actions' },
+            el('button', { class: 'btn', onclick: closeModal }, 'Cancel'),
+            el('button', { class: 'btn primary', onclick: () => {
+              const t = parseFloat(target.value);
+              if (!name.value.trim() || !t) { toast('Fill in name and target'); return; }
+              setState(st => st.goals.push({
+                id: 'g_' + Math.random().toString(36).slice(2, 7),
+                type: typeSel.value, emoji: templateEmoji[typeSel.value] || '🎯',
+                name: name.value.trim(), target: t,
+                saved: 0, monthly: parseFloat(monthly.value) || 0,
+                priority: 'medium', luminateAccount: 'acc_lhys',
+                tip: 'Park savings in Luminate High-Yield at 4.50% APY — earns while it waits.'
+              }));
+              closeModal(); toast('Goal created ✓'); render();
+            }}, 'Create goal'))
+        );
+        openModal(modal);
+      };
+
+      content.appendChild(viewHeader('Life Goals', 'Big plans, tracked with real math.',
+        [el('button', { class: 'btn primary', onclick: openNewGoal }, '+ New goal')]));
+
+      if (!goals.length) {
+        content.appendChild(card(null, el('div', { style: { textAlign: 'center', padding: '32px' } },
+          el('div', { style: { fontSize: '42px' } }, '🎯'),
+          el('h3', {}, 'No goals yet'),
+          el('p', { class: 'muted' }, 'Create your first goal to see personalized contribution plans.'),
+          el('button', { class: 'btn primary', style: { marginTop: '12px' }, onclick: openNewGoal }, '+ New goal'))));
+        return;
+      }
+
+      content.appendChild(el('div', { class: 'grid grid-3' },
+        ...goals.map(g => {
+          const pct = g.target > 0 ? (g.saved / g.target) * 100 : 0;
+          const proj = projectGoal(g);
+          return el('div', { class: 'goal', style: { cursor: 'pointer' }, onclick: () => openEditGoal(g) },
+            el('div', { style: { display: 'flex', gap: '14px', alignItems: 'center' } },
+              ring(pct),
+              el('div', { style: { flex: '1', minWidth: 0 } },
+                el('div', { class: 'goal-emoji' }, g.emoji),
+                el('div', { class: 'goal-name' }, g.name))),
+            el('div', { class: 'goal-amt' },
+              el('span', {}, fmtMoney(g.saved, { cents: false }) + ' / ' + fmtMoney(g.target, { cents: false })),
+              el('span', { class: 'num pos' }, '+' + fmtMoney(g.monthly, { cents: false }) + '/mo')),
+            progressBar(pct, pct >= 100 ? 'success' : pct >= 50 ? '' : 'warn'),
+            el('div', { class: 'subtle' },
+              proj ? 'Projected completion · ' + fmtDate(proj.completion) + '  (~' + proj.months + ' months)'
+                   : 'Set a monthly contribution to forecast completion'),
+            g.tip ? el('p', { class: 'muted', style: { fontSize: '12px', marginTop: '6px' } }, '💡 ' + g.tip) : null
+          );
+        })
+      ));
+    },
     bills: function (content) {
       const s = getState();
       const today = new Date(); today.setHours(0, 0, 0, 0);
