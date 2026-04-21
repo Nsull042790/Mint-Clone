@@ -14,7 +14,7 @@
           computeChurnRisk, loyaltyTier, rewardsPoints,
           GOAL_TEMPLATES, recommendMonthly, projectGoal,
           getCategory, getAccount,
-          getState, setState, render, navigate, toast, openModal, closeModal,
+          getState, setState, save, render, navigate, toast, openModal, closeModal,
           coachReply, COACH_INTRO } = A;
 
   /* ---------- Shared render helpers ---------- */
@@ -71,7 +71,150 @@
   /* ---------- Public registry ---------- */
   window.LuminateViews = {
     dashboard:    todo('Dashboard'),
-    transactions: todo('Transactions'),
+    transactions: function (content) {
+      const s = getState();
+      if (!s._uiTxn) s._uiTxn = { q: '', cat: '', acct: '', from: '', to: '', pending: false, sort: 'date', dir: 'desc', page: 1 };
+      const ui = s._uiTxn;
+      const PAGE = 50;
+      const updateUI = (patch) => { Object.assign(ui, patch); save(); render(); };
+
+      // Filter bar
+      const qIn = el('input', { type: 'search', placeholder: 'Search merchants…', value: ui.q,
+        style: { minWidth: '220px' } });
+      qIn.addEventListener('input', () => updateUI({ q: qIn.value, page: 1 }));
+
+      const catSel = el('select', {},
+        el('option', { value: '' }, 'All categories'),
+        ...s.categories.map(c => el('option', { value: c.id, selected: ui.cat === c.id ? 'selected' : null },
+          c.icon + '  ' + c.name)));
+      catSel.addEventListener('change', () => updateUI({ cat: catSel.value, page: 1 }));
+
+      const acctSel = el('select', {},
+        el('option', { value: '' }, 'All accounts'),
+        ...s.accounts.map(a => el('option', { value: a.id, selected: ui.acct === a.id ? 'selected' : null },
+          a.nickname + ' ····' + a.mask)));
+      acctSel.addEventListener('change', () => updateUI({ acct: acctSel.value, page: 1 }));
+
+      const fromIn = el('input', { type: 'date', value: ui.from });
+      fromIn.addEventListener('change', () => updateUI({ from: fromIn.value, page: 1 }));
+      const toIn = el('input', { type: 'date', value: ui.to });
+      toIn.addEventListener('change', () => updateUI({ to: toIn.value, page: 1 }));
+
+      const pendBtn = el('button', {
+        class: cls('chip', ui.pending ? 'warn' : ''),
+        style: { cursor: 'pointer' },
+        onclick: () => updateUI({ pending: !ui.pending, page: 1 })
+      }, (ui.pending ? '⏱ Pending only' : '⏱ Pending'));
+
+      const clearBtn = el('button', { class: 'btn ghost', onclick: () => {
+        s._uiTxn = { q: '', cat: '', acct: '', from: '', to: '', pending: false, sort: 'date', dir: 'desc', page: 1 };
+        save(); render();
+      }}, 'Reset');
+
+      content.appendChild(viewHeader('Transactions', s.transactions.length + ' total transactions across your accounts.',
+        [el('button', { class: 'btn primary', onclick: () => toast('Add transaction — coming in next update') }, '+ Add')]));
+
+      content.appendChild(el('div', { class: 'filter-bar' },
+        qIn, catSel, acctSel,
+        el('span', { class: 'subtle' }, 'From'), fromIn,
+        el('span', { class: 'subtle' }, 'To'),   toIn,
+        pendBtn, clearBtn));
+
+      // Apply filters
+      let rows = s.transactions.slice();
+      if (ui.q) {
+        const q = ui.q.toLowerCase();
+        rows = rows.filter(t => (t.merchant || '').toLowerCase().includes(q)
+                             || (t.description || '').toLowerCase().includes(q));
+      }
+      if (ui.cat)  rows = rows.filter(t => t.category === ui.cat);
+      if (ui.acct) rows = rows.filter(t => t.accountId === ui.acct);
+      if (ui.from) rows = rows.filter(t => t.date >= ui.from);
+      if (ui.to)   rows = rows.filter(t => t.date <= ui.to);
+      if (ui.pending) rows = rows.filter(t => t.pending);
+
+      // Sort
+      const sign = ui.dir === 'asc' ? 1 : -1;
+      const sortKeys = {
+        date:     (t) => t.date,
+        merchant: (t) => (t.merchant || '').toLowerCase(),
+        category: (t) => t.category,
+        account:  (t) => (getAccount(t.accountId) || {}).nickname || '',
+        amount:   (t) => t.amount
+      };
+      const kf = sortKeys[ui.sort] || sortKeys.date;
+      rows.sort((a, b) => {
+        const ka = kf(a), kb = kf(b);
+        if (ka < kb) return -1 * sign;
+        if (ka > kb) return  1 * sign;
+        return 0;
+      });
+
+      // Summary
+      const sum = rows.reduce((x, t) => {
+        if (t.category === 'transfer') return x;
+        if (t.amount > 0) x.income += t.amount;
+        else x.spent += Math.abs(t.amount);
+        return x;
+      }, { income: 0, spent: 0 });
+      content.appendChild(el('div', { class: 'grid grid-3', style: { marginBottom: '16px' } },
+        kpi('Matches',  rows.length.toLocaleString(), null, 'navy'),
+        kpi('Income',   fmtMoney(sum.income), null, 'success'),
+        kpi('Spent',    fmtMoney(sum.spent),  null, 'warn')
+      ));
+
+      // Pagination
+      const pages = Math.max(1, Math.ceil(rows.length / PAGE));
+      const page  = Math.min(pages, Math.max(1, ui.page || 1));
+      const slice = rows.slice((page - 1) * PAGE, page * PAGE);
+
+      // Sortable header
+      const thBtn = (label, key) => el('th', { style: { cursor: 'pointer', userSelect: 'none' },
+        onclick: () => updateUI({ sort: key, dir: (ui.sort === key && ui.dir === 'desc') ? 'asc' : 'desc', page: 1 }) },
+        label + (ui.sort === key ? (ui.dir === 'desc' ? ' ▼' : ' ▲') : ''));
+
+      const tbody = el('tbody', {}, ...slice.map(t => {
+        const cat = getCategory(t.category);
+        const acc = getAccount(t.accountId);
+        return el('tr', { style: { cursor: 'pointer' }, onclick: () => toast('Row edit — wiring in next update') },
+          el('td', {}, fmtDateShort(t.date) + (t.pending ? ' ⏱' : '')),
+          el('td', {}, el('div', { class: 'txn-merchant' },
+            el('div', { class: 'txn-icon', style: { background: cat.color, color: '#fff' } }, cat.icon),
+            el('div', {},
+              el('strong', {}, t.merchant),
+              el('small', {}, t.description || ''))
+          )),
+          el('td', {}, el('span', { class: 'chip navy' }, cat.name)),
+          el('td', {}, acc ? (acc.nickname + ' ····' + acc.mask) : '—'),
+          el('td', { class: cls('num', t.amount >= 0 ? 'pos' : 'neg'),
+            style: { textAlign: 'right', fontWeight: 600 } },
+            (t.amount >= 0 ? '+' : '') + fmtMoney(t.amount)));
+      }));
+
+      content.appendChild(card(null, [
+        el('table', { class: 'table' },
+          el('thead', {}, el('tr', {},
+            thBtn('Date', 'date'),
+            thBtn('Merchant', 'merchant'),
+            thBtn('Category', 'category'),
+            thBtn('Account', 'account'),
+            el('th', { style: { cursor: 'pointer', userSelect: 'none', textAlign: 'right' },
+              onclick: () => updateUI({ sort: 'amount', dir: (ui.sort === 'amount' && ui.dir === 'desc') ? 'asc' : 'desc', page: 1 }) },
+              'Amount' + (ui.sort === 'amount' ? (ui.dir === 'desc' ? ' ▼' : ' ▲') : '')))),
+          tbody),
+        // Pagination
+        el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                             borderTop: '1px solid var(--border)', paddingTop: '12px', marginTop: '12px' } },
+          el('span', { class: 'subtle' },
+            rows.length
+              ? 'Showing ' + ((page - 1) * PAGE + 1) + '–' + Math.min(page * PAGE, rows.length) + ' of ' + rows.length
+              : 'No transactions match your filters'),
+          el('div', { style: { display: 'flex', gap: '8px', alignItems: 'center' } },
+            el('button', { class: 'btn', onclick: () => updateUI({ page: Math.max(1, page - 1) }) }, '← Prev'),
+            el('span', { class: 'muted' }, 'Page ' + page + ' / ' + pages),
+            el('button', { class: 'btn', onclick: () => updateUI({ page: Math.min(pages, page + 1) }) }, 'Next →')))
+      ]));
+    },
     accounts: function (content) {
       const s = getState();
 
