@@ -1397,6 +1397,92 @@
       };
       const isFollowUp = (q) => /^(and|what about|how about|tell me more|more on that|why|what else)\b[\s,?!.]*/i.test(q.trim());
 
+      // Proactive-insight detectors
+      const generateProactiveInsights = () => {
+        const out = [];
+        const thisMonth = monthlySpendByCategory(currentMonth());
+        const priorKeys = lastNMonthKeys(4).slice(0, 3);
+        const priorAvg = {};
+        priorKeys.forEach(k => {
+          const m = monthlySpendByCategory(k);
+          Object.keys(m).forEach(cat => { priorAvg[cat] = (priorAvg[cat] || 0) + m[cat] / priorKeys.length; });
+        });
+        Object.keys(thisMonth).forEach(cat => {
+          const avg = priorAvg[cat] || 0;
+          if (avg >= 40 && thisMonth[cat] > avg * 1.4) {
+            const c = getCategory(cat);
+            const extra = Math.round(thisMonth[cat] - avg);
+            out.push({
+              text: c.name + ' spending is about ' + fmtMoney(extra) + ' above your 3-month average this month. Want to check?',
+              actions: [
+                { label: 'Open Budgets', kind: 'open-view', route: 'budgets' },
+                { label: 'Tell me more', kind: 'suggest-followup', query: 'review my ' + c.name.toLowerCase() + ' spending' }
+              ]
+            });
+          }
+        });
+        const cc = s.accounts.find(a => a.type === 'credit' && a.limit);
+        if (cc) {
+          const util = Math.round(Math.abs(cc.balance) / cc.limit * 100);
+          if (util >= 30) {
+            const pay = Math.max(50, Math.round(Math.abs(cc.balance) - cc.limit * 0.09));
+            out.push({
+              text: 'Your ' + cc.nickname + ' utilization is ' + util + '%. A ' + fmtMoney(pay) + ' payment would drop it under 10% and likely lift your score 10–20 points.',
+              actions: [
+                { label: 'Log ' + fmtMoney(pay) + ' payment', kind: 'pay-card', accountId: cc.id, amount: pay },
+                { label: 'Skip', kind: 'dismiss' }
+              ]
+            });
+          }
+        }
+        s.goals.forEach(g => {
+          if (!g.deadline || !g.monthly) return;
+          const proj = projectGoal(g);
+          if (!proj) return;
+          const deadDate = new Date(g.deadline);
+          const compDate = new Date(proj.completion);
+          if (compDate > deadDate) {
+            const monthsAvail = Math.max(1, Math.ceil((deadDate - new Date()) / (30 * 86400000)));
+            const bump = recommendMonthly(g.target, g.saved, monthsAvail);
+            out.push({
+              text: g.name + ' is projected to finish after your target date. ' + fmtMoney(bump) + '/mo keeps it on schedule.',
+              actions: [
+                { label: 'Bump to ' + fmtMoney(bump) + '/mo', kind: 'boost-goal', goalId: g.id, newMonthly: bump },
+                { label: 'Open Goals', kind: 'open-view', route: 'goals' }
+              ]
+            });
+          }
+        });
+        return out.slice(0, 3);
+      };
+
+      const applyAction = (a) => {
+        if (a.kind === 'open-view') { navigate(a.route); return; }
+        if (a.kind === 'suggest-followup') { input.value = a.query; sendMessage(); return; }
+        if (a.kind === 'dismiss') { toast('Dismissed'); return; }
+        if (a.kind === 'cut-category') {
+          setState(st => { const b = st.budgets.find(x => x.categoryId === a.catId); if (b) b.limit = Math.round(b.limit * (1 - a.pct / 100)); });
+          toast('Budget trimmed ' + a.pct + '%'); render(); return;
+        }
+        if (a.kind === 'boost-goal') {
+          setState(st => { const g = st.goals.find(x => x.id === a.goalId); if (g) g.monthly = a.newMonthly; });
+          toast('Goal contribution updated to ' + fmtMoney(a.newMonthly) + '/mo'); render(); return;
+        }
+        if (a.kind === 'pay-card') {
+          setState(st => {
+            st.transactions.unshift({
+              id: 'tx_' + Math.random().toString(36).slice(2, 8),
+              accountId: a.accountId, date: new Date().toISOString().slice(0, 10),
+              merchant: 'Card payment', description: 'Scheduled via Lumi',
+              amount: -a.amount, category: 'transfer', pending: true
+            });
+            const acc = st.accounts.find(x => x.id === a.accountId);
+            if (acc) acc.balance += a.amount;
+          });
+          toast('Payment of ' + fmtMoney(a.amount) + ' logged'); render(); return;
+        }
+      };
+
       const bubbleStyle = (who) => ({
         maxWidth: '75%', padding: '12px 14px', borderRadius: '14px', marginBottom: '10px',
         lineHeight: '1.45',
@@ -1411,15 +1497,36 @@
         padding: '14px', background: 'var(--bg)',
         border: '1px solid var(--border)', borderRadius: 'var(--radius)'
       }});
-      const renderBubble = (who, text) => {
+      const renderBubble = (who, text, actions) => {
         const b = el('div', { style: bubbleStyle(who) }, text);
+        if (actions && actions.length) {
+          b.appendChild(el('div', {
+            style: { marginTop: '10px', display: 'flex', gap: '6px', flexWrap: 'wrap' }
+          }, ...actions.map(a => el('button', {
+            class: 'chip navy',
+            style: { cursor: 'pointer', padding: '4px 10px', fontSize: '12px' },
+            onclick: () => applyAction(a)
+          }, a.label))));
+        }
         stream.appendChild(b);
         stream.scrollTop = stream.scrollHeight;
         return b;
       };
 
+      // Seed proactive insights right after the intro if this is a fresh thread
+      if (!s._uiInsights.proactiveSeeded) {
+        const insights = generateProactiveInsights();
+        if (insights.length) {
+          insights.forEach(ins => s._uiInsights.history.push({
+            who: 'lumi', text: ins.text, actions: ins.actions
+          }));
+        }
+        s._uiInsights.proactiveSeeded = true;
+        save();
+      }
+
       // Replay all prior history
-      s._uiInsights.history.forEach(m => renderBubble(m.who, m.text));
+      s._uiInsights.history.forEach(m => renderBubble(m.who, m.text, m.actions));
 
       // Typing indicator with animated dots
       const showTyping = () => {
@@ -1465,7 +1572,7 @@
       const sendBtn = el('button', { class: 'btn primary', onclick: sendMessage }, 'Send');
       const clearBtn = el('button', { class: 'btn ghost', onclick: () => {
         if (!confirm('Clear your chat history with Lumi?')) return;
-        s._uiInsights = { history: [], lastTopic: null };
+        s._uiInsights = { history: [], lastTopic: null, proactiveSeeded: false };
         save(); render();
       }}, 'Clear');
 
