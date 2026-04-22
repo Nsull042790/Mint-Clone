@@ -11,7 +11,7 @@
           monthlySpendByCategory, monthlyIncome, monthlyExpense,
           averageMonthlyExpense, averageMonthlyIncome,
           netWorth, assets, liabilities, safeToSpend, cashFlowForecast, detectSubscriptions,
-          computeChurnRisk, loyaltyTier, rewardsPoints,
+          computeChurnRisk, loyaltyTier, rewardsPoints, clarityScore, moneyWeather,
           GOAL_TEMPLATES, recommendMonthly, projectGoal,
           getCategory, getAccount,
           getState, setState, save, render, navigate, toast, openModal, closeModal,
@@ -79,6 +79,95 @@
       const savingsRate = inc > 0 ? (surplus / inc) * 100 : 0;
       const nw = netWorth();
       const sts = safeToSpend();
+      const cs = clarityScore();
+      const wx = moneyWeather();
+
+      // --- SVG helpers for the hero ---
+      const NS = 'http://www.w3.org/2000/svg';
+      const svgEl = (name, attrs, ...kids) => {
+        const e = document.createElementNS(NS, name);
+        for (const k in attrs) e.setAttribute(k, attrs[k]);
+        kids.flat().forEach(k => k && e.appendChild(k));
+        return e;
+      };
+      const scoreDial = () => {
+        // Gauge arc 300..850, 180° semicircle
+        const minS = 300, maxS = 850;
+        const pct = Math.max(0, Math.min(1, (cs.score - minS) / (maxS - minS)));
+        const w = 260, h = 160, cx = w / 2, cy = 130, r = 100;
+        const polar = (t) => [cx + r * Math.cos(Math.PI * (1 - t)), cy - r * Math.sin(Math.PI * (1 - t))];
+        const arcPath = (t0, t1) => {
+          const [x0, y0] = polar(t0), [x1, y1] = polar(t1);
+          const large = (t1 - t0) > 0.5 ? 1 : 0;
+          return `M ${x0} ${y0} A ${r} ${r} 0 ${large} 1 ${x1} ${y1}`;
+        };
+        const svg = svgEl('svg', { viewBox: `0 0 ${w} ${h}`, width: '100%', style: 'max-width:320px;display:block;margin:0 auto' });
+        svg.appendChild(svgEl('path', { d: arcPath(0, 1), stroke: 'var(--surface-2)', 'stroke-width': 14, fill: 'none', 'stroke-linecap': 'round' }));
+        svg.appendChild(svgEl('path', { d: arcPath(0, Math.max(0.001, pct)), stroke: cs.band.color, 'stroke-width': 14, fill: 'none', 'stroke-linecap': 'round' }));
+        // Center value
+        const val = svgEl('text', { x: cx, y: cy - 14, 'text-anchor': 'middle', 'font-size': 44, 'font-weight': 700, fill: 'var(--text)', 'font-family': 'Poppins, sans-serif' });
+        val.textContent = String(cs.score);
+        const lbl = svgEl('text', { x: cx, y: cy + 10, 'text-anchor': 'middle', 'font-size': 13, fill: cs.band.color, 'font-weight': 600, 'font-family': 'Poppins, sans-serif' });
+        lbl.textContent = cs.band.label;
+        svg.appendChild(val); svg.appendChild(lbl);
+        return svg;
+      };
+      const weatherMark = () => {
+        const accent = wx.state === 'clear' ? '#15a56a' : wx.state === 'mixed' ? '#e8a63a'
+                    : wx.state === 'storm' ? '#d94848' : '#7bb7e0';
+        const svg = svgEl('svg', { viewBox: '0 0 64 64', width: 80, height: 80, style: 'display:block' });
+        const glow = svgEl('circle', { cx: 32, cy: 32, r: 28, fill: accent, opacity: 0.15 });
+        svg.appendChild(glow);
+        if (wx.state === 'clear') {
+          svg.appendChild(svgEl('circle', { cx: 32, cy: 32, r: 10, fill: 'none', stroke: 'var(--navy)', 'stroke-width': 2.5 }));
+          [0,1,2,3,4,5,6,7].forEach(i => {
+            const a = (Math.PI * 2 * i) / 8;
+            const x1 = 32 + Math.cos(a) * 16, y1 = 32 + Math.sin(a) * 16;
+            const x2 = 32 + Math.cos(a) * 22, y2 = 32 + Math.sin(a) * 22;
+            svg.appendChild(svgEl('line', { x1, y1, x2, y2, stroke: accent, 'stroke-width': 2.5, 'stroke-linecap': 'round' }));
+          });
+        } else if (wx.state === 'mixed') {
+          svg.appendChild(svgEl('path', { d: 'M 18 38 Q 12 38 12 32 Q 12 26 18 26 Q 20 18 28 18 Q 36 18 38 26 Q 46 26 46 32 Q 46 38 40 38 Z', fill: 'none', stroke: 'var(--navy)', 'stroke-width': 2.5, 'stroke-linejoin': 'round' }));
+        } else if (wx.state === 'storm') {
+          svg.appendChild(svgEl('path', { d: 'M 18 32 Q 12 32 12 26 Q 12 20 18 20 Q 20 12 28 12 Q 36 12 38 20 Q 46 20 46 26 Q 46 32 40 32 Z', fill: 'none', stroke: 'var(--navy)', 'stroke-width': 2.5, 'stroke-linejoin': 'round' }));
+          [22, 30, 38].forEach((x, i) => svg.appendChild(svgEl('line', { x1: x, y1: 38 + i % 2 * 2, x2: x - 4, y2: 52 + i % 2 * 2, stroke: accent, 'stroke-width': 2.5, 'stroke-linecap': 'round' })));
+        } else {
+          // Milestone: 4-point spark
+          svg.appendChild(svgEl('path', { d: 'M 32 12 L 36 28 L 52 32 L 36 36 L 32 52 L 28 36 L 12 32 L 28 28 Z', fill: accent, stroke: 'var(--navy)', 'stroke-width': 1.5, 'stroke-linejoin': 'round' }));
+        }
+        return svg;
+      };
+
+      const openWeatherModal = () => {
+        openModal(el('div', {},
+          el('h2', {}, 'Money Weather · ' + wx.label),
+          el('p', { class: 'muted', style: { marginBottom: '14px' } }, wx.reason),
+          el('ul', { style: { paddingLeft: '20px', marginBottom: '14px', color: 'var(--text-muted)' } },
+            ...wx.actions.map(a => el('li', {}, a))),
+          el('div', { class: 'modal-actions' },
+            el('button', { class: 'btn', onclick: closeModal }, 'Close'),
+            el('button', { class: 'btn primary', onclick: () => { closeModal(); navigate('insights'); } }, 'Ask Lumi'))
+        ));
+      };
+      const openScoreModal = () => {
+        const row = (label, data) => el('div', { class: 'nw-row' },
+          el('span', {}, label),
+          el('span', { class: 'num' }, data.value + (data.max === 100 ? '%' : '') +
+            (label.includes('Emergency') ? ' mo' : label.includes('Savings') || label.includes('Utilization') || label.includes('Debt') ? '%' : '')));
+        const c = cs.components;
+        openModal(el('div', {},
+          el('h2', {}, 'Clarity Score · ' + cs.score),
+          el('p', { class: 'muted', style: { marginBottom: '14px' } },
+            'A 0–850 composite of the five pillars of your financial health. Updated as your data moves.'),
+          row('Savings rate',        c.savings),
+          row('Emergency fund',      c.emergency),
+          row('Debt-to-income',      c.dti),
+          row('Credit utilization',  c.utilization),
+          row('Goals on track',      c.goals),
+          el('div', { class: 'modal-actions', style: { marginTop: '16px' } },
+            el('button', { class: 'btn primary', onclick: closeModal }, 'Got it'))
+        ));
+      };
 
       // Net-worth 12-mo approximation (same method as networth view)
       const months = lastNMonthKeys(12);
@@ -93,6 +182,32 @@
       const greet = (h => h < 5 ? 'Working late' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening')(new Date().getHours());
       content.appendChild(viewHeader(greet + ', ' + (u.firstName || 'friend'),
         'Here\'s your financial picture across every account, today ' + fmtDateShort(new Date().toISOString().slice(0, 10)) + '.'));
+
+      // --- Hero: Clarity Score + Money Weather ---
+      const scoreCard = el('div', { class: 'card', style: { cursor: 'pointer' }, onclick: openScoreModal },
+        el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' } },
+          el('div', {},
+            el('div', { class: 'eyebrow', style: { fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--lumi-600)', fontWeight: 600 } }, 'Clarity Score'),
+            el('strong', { style: { fontFamily: 'Poppins, sans-serif', fontSize: '16px' } }, 'Your financial health')),
+          el('span', { class: cls('chip', cs.delta >= 0 ? 'success' : 'danger') },
+            (cs.delta >= 0 ? '▲ +' : '▼ ') + Math.abs(cs.delta))),
+        scoreDial(),
+        el('p', { class: 'muted', style: { textAlign: 'center', marginTop: '8px', fontSize: '12px' } },
+          'Tap for the five pillars →'));
+
+      const weatherCard = el('div', {
+        class: 'card', style: { cursor: 'pointer', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' },
+        onclick: openWeatherModal
+      },
+        el('div', {},
+          el('div', { class: 'eyebrow', style: { fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--lumi-600)', fontWeight: 600 } }, 'Money Weather'),
+          el('strong', { style: { fontFamily: 'Poppins, sans-serif', fontSize: '22px', display: 'block', marginTop: '4px' } }, wx.label)),
+        el('div', { style: { display: 'flex', gap: '16px', alignItems: 'center', margin: '14px 0' } },
+          weatherMark(),
+          el('p', { class: 'muted', style: { flex: 1, fontSize: '13px', lineHeight: 1.45 } }, wx.reason)),
+        el('div', { class: 'subtle' }, 'Tap for 3 suggested actions →'));
+
+      content.appendChild(el('div', { class: 'grid grid-2', style: { marginBottom: '20px' } }, scoreCard, weatherCard));
 
       // KPI strip
       content.appendChild(el('div', { class: 'grid grid-4', style: { marginBottom: '20px' } },
