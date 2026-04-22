@@ -50,6 +50,119 @@
     return el('div', { class: cls('bar', variant) }, fill);
   }
 
+  // Clarity Pulse — weekly digest of what changed. Used on the dashboard.
+  function generateClarityPulse() {
+    const s = getState();
+    const mk = currentMonth();
+    const currentSurplus = monthlyIncome(mk) - monthlyExpense(mk);
+    const avgSurplus = averageMonthlyIncome(3) - averageMonthlyExpense(3);
+    const thisMonth = monthlySpendByCategory(mk);
+    const priorKeys = lastNMonthKeys(4).slice(0, 3);
+    const priorAvg = {};
+    priorKeys.forEach(k => {
+      const m = monthlySpendByCategory(k);
+      Object.keys(m).forEach(cat => { priorAvg[cat] = (priorAvg[cat] || 0) + m[cat] / priorKeys.length; });
+    });
+    let bestDrop = null, worstSpike = null;
+    Object.keys(priorAvg).forEach(cat => {
+      const diff = priorAvg[cat] - (thisMonth[cat] || 0);
+      if (priorAvg[cat] < 40) return;
+      if (diff > 30 && (!bestDrop || diff > bestDrop.diff)) bestDrop = { cat, diff };
+      if (-diff > 30 && (!worstSpike || -diff > worstSpike.diff)) worstSpike = { cat, diff: -diff };
+    });
+    const bullets = [];
+    if (bestDrop)  bullets.push(getCategory(bestDrop.cat).name  + ' is down '  + fmtMoney(Math.round(bestDrop.diff))  + ' vs your 3-month average — nice.');
+    if (worstSpike) bullets.push(getCategory(worstSpike.cat).name + ' is up '   + fmtMoney(Math.round(worstSpike.diff)) + ' — worth a look.');
+    const goals = s.goals || [];
+    const onTrack = goals.filter(g => {
+      const proj = projectGoal(g);
+      if (!proj || !g.deadline) return false;
+      return new Date(proj.completion) <= new Date(g.deadline);
+    }).length;
+    if (goals.length) bullets.push(onTrack + ' of ' + goals.length + ' goals on track or ahead of schedule.');
+    if (currentSurplus > avgSurplus && avgSurplus > 0) {
+      bullets.push('This month\'s surplus is ' + fmtMoney(currentSurplus - avgSurplus) + ' above your 3-month average.');
+    }
+    const headline = currentSurplus > avgSurplus
+      ? 'You\'re ahead of your usual pace this week.'
+      : currentSurplus > 0
+        ? 'Steady week — nothing alarming, surplus intact.'
+        : 'A tight week. Worth a quick check of the heavy categories.';
+    return { headline, bullets: bullets.slice(0, 3) };
+  }
+
+  // Monthly Recap — 6-stat modal + share-graphic download
+  function showMonthlyRecap() {
+    const s = getState();
+    const mk = currentMonth();
+    const [yy, mm] = mk.split('-');
+    const monthName = new Date(+yy, +mm - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+    const income = monthlyIncome(mk);
+    const spent = monthlyExpense(mk);
+    const net = income - spent;
+    const rate = income > 0 ? (net / income * 100).toFixed(1) + '%' : '0%';
+    const spend = monthlySpendByCategory(mk);
+    const topEntry = Object.entries(spend).sort((a, b) => b[1] - a[1])[0];
+    const topCat = topEntry ? getCategory(topEntry[0]).name : '—';
+    const txns = s.transactions.filter(t => monthKey(t.date) === mk);
+    const merchants = new Set(txns.map(t => t.merchant)).size;
+
+    const stats = [
+      { label: 'Income',         value: fmtMoney(income, { cents: false }), accent: 'success' },
+      { label: 'Spent',          value: fmtMoney(spent,  { cents: false }), accent: 'warn' },
+      { label: 'Net this month', value: (net >= 0 ? '+' : '') + fmtMoney(net, { cents: false }), accent: net >= 0 ? 'success' : 'navy' },
+      { label: 'Savings rate',   value: rate, accent: 'navy' },
+      { label: 'Top category',   value: topCat + ' · ' + (topEntry ? fmtMoney(topEntry[1], { cents: false }) : ''), accent: '' },
+      { label: 'Activity',       value: txns.length + ' txns · ' + merchants + ' merchants', accent: '' }
+    ];
+
+    const shareStat = (stat) => {
+      const cnv = document.createElement('canvas');
+      cnv.width = 1080; cnv.height = 1920;
+      const ctx = cnv.getContext('2d');
+      const grad = ctx.createLinearGradient(0, 0, 0, 1920);
+      grad.addColorStop(0, '#0c173d'); grad.addColorStop(1, '#1d3170');
+      ctx.fillStyle = grad; ctx.fillRect(0, 0, 1080, 1920);
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#7bb7e0';
+      ctx.font = 'bold 48px "Poppins", "Josefin Sans", sans-serif';
+      ctx.fillText('LUMINATE HORIZON', 540, 220);
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.font = '34px "Josefin Sans", sans-serif';
+      ctx.fillText(monthName.toUpperCase(), 540, 290);
+      ctx.fillStyle = 'rgba(255,255,255,0.75)';
+      ctx.font = '38px "Josefin Sans", sans-serif';
+      ctx.fillText(stat.label.toUpperCase(), 540, 880);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 170px "Poppins", "Josefin Sans", sans-serif';
+      ctx.fillText(stat.value, 540, 1080);
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.font = 'italic 30px "Josefin Sans", sans-serif';
+      ctx.fillText('A financial partner for the rest of your life.', 540, 1800);
+      const link = document.createElement('a');
+      link.download = 'luminate-horizon-' + mk + '-' + stat.label.toLowerCase().replace(/\s+/g, '-') + '.png';
+      link.href = cnv.toDataURL('image/png');
+      link.click();
+      toast('Share graphic downloaded');
+    };
+
+    openModal(el('div', { style: { maxWidth: '560px' } },
+      el('h2', {}, 'Your ' + monthName),
+      el('p', { class: 'muted', style: { marginBottom: '16px' } },
+        'Six stats that defined your month. Tap any tile to download a share graphic.'),
+      el('div', { class: 'grid grid-2', style: { gap: '10px' } },
+        ...stats.map(st => el('div', {
+          class: cls('kpi', st.accent),
+          style: { cursor: 'pointer' },
+          onclick: () => shareStat(st)
+        },
+          el('div', { class: 'kpi-label' }, st.label),
+          el('div', { class: 'kpi-value', style: { fontSize: '20px' } }, st.value)))),
+      el('div', { class: 'modal-actions' },
+        el('button', { class: 'btn', onclick: closeModal }, 'Close'))
+    ));
+  }
+
   // Chart.js loads with defer, so ensure it's ready before calling the callback.
   function ensureChart(cb) {
     if (window.Chart) { try { cb(); } catch (e) { console.error(e); } return; }
@@ -181,7 +294,27 @@
       // Header
       const greet = (h => h < 5 ? 'Working late' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening')(new Date().getHours());
       content.appendChild(viewHeader(greet + ', ' + (u.firstName || 'friend'),
-        'Here\'s your financial picture across every account, today ' + fmtDateShort(new Date().toISOString().slice(0, 10)) + '.'));
+        'Here\'s your financial picture across every account, today ' + fmtDateShort(new Date().toISOString().slice(0, 10)) + '.',
+        [el('button', { class: 'btn', onclick: showMonthlyRecap }, 'Monthly recap →')]));
+
+      // Clarity Pulse — weekly digest right under the header
+      const pulse = generateClarityPulse();
+      content.appendChild(el('div', {
+        class: 'card',
+        style: {
+          marginBottom: '20px',
+          background: 'linear-gradient(120deg, rgba(123,183,224,0.14), rgba(12,23,61,0.04))'
+        }
+      },
+        el('div', { class: 'card-head' },
+          el('strong', {}, 'Clarity Pulse · week of ' + fmtDateShort(new Date().toISOString().slice(0, 10))),
+          el('div', {},
+            el('button', { class: 'btn ghost', onclick: showMonthlyRecap }, 'Monthly recap →'))),
+        el('p', { style: { fontSize: '16px', fontWeight: '600', marginBottom: '10px' } }, pulse.headline),
+        pulse.bullets.length
+          ? el('ul', { style: { paddingLeft: '20px', margin: 0, color: 'var(--text-muted)' } },
+              ...pulse.bullets.map(b => el('li', { style: { marginBottom: '4px' } }, b)))
+          : el('p', { class: 'muted' }, 'Nothing notable this week — you\'re on cruise control.')));
 
       // --- Hero: Clarity Score + Money Weather ---
       const scoreCard = el('div', { class: 'card', style: { cursor: 'pointer' }, onclick: openScoreModal },
