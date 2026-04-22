@@ -1367,10 +1367,36 @@
       ));
     },
     insights: function (content) {
-      const u = getState().user;
+      const s = getState();
+      const u = s.user;
       content.appendChild(viewHeader('AI Insights', 'Chat with Lumi, your Luminate financial coach.'));
 
-      // Shared bubble styles
+      // Multi-turn memory — history survives reload and re-render
+      if (!s._uiInsights) s._uiInsights = { history: [], lastTopic: null };
+      if (!s._uiInsights.history.length) {
+        COACH_INTRO.forEach(line => s._uiInsights.history.push({
+          who: 'lumi', text: line.replace('{name}', u.firstName || 'there')
+        }));
+        save();
+      }
+
+      const detectTopic = (q) => {
+        const x = q.toLowerCase();
+        if (/budget|dining|grocer|spend|category/.test(x)) return 'budget';
+        if (/debt|credit\s*card|loan|owe|avalanche|snowball/.test(x)) return 'debt';
+        if (/credit\s*score|fico|utili/.test(x)) return 'credit';
+        if (/retire|401k|ira|roth|pension|fire/.test(x)) return 'retirement';
+        if (/save|saving|emergency/.test(x)) return 'savings';
+        if (/goal|italy|vacation|wedding|baby|home\s*down/.test(x)) return 'goals';
+        if (/invest|portfolio|stock|bond|etf/.test(x)) return 'invest';
+        if (/house|mortgage|rent|buy/.test(x)) return 'housing';
+        if (/tax|withhold|w-?4/.test(x)) return 'tax';
+        if (/subscript|recurring/.test(x)) return 'subscriptions';
+        if (/insurance|life|umbrella|hsa/.test(x)) return 'insurance';
+        return null;
+      };
+      const isFollowUp = (q) => /^(and|what about|how about|tell me more|more on that|why|what else)\b[\s,?!.]*/i.test(q.trim());
+
       const bubbleStyle = (who) => ({
         maxWidth: '75%', padding: '12px 14px', borderRadius: '14px', marginBottom: '10px',
         lineHeight: '1.45',
@@ -1379,40 +1405,73 @@
         alignSelf: who === 'user' ? 'flex-end' : 'flex-start'
       });
 
-      // Left: chat column
       const stream = el('div', { style: {
         display: 'flex', flexDirection: 'column',
         height: '460px', overflowY: 'auto',
         padding: '14px', background: 'var(--bg)',
         border: '1px solid var(--border)', borderRadius: 'var(--radius)'
       }});
-      const addBubble = (who, text) => {
+      const renderBubble = (who, text) => {
         const b = el('div', { style: bubbleStyle(who) }, text);
         stream.appendChild(b);
         stream.scrollTop = stream.scrollHeight;
+        return b;
       };
 
-      // Seed intro
-      COACH_INTRO.forEach(line => addBubble('lumi', line.replace('{name}', u.firstName || 'there')));
+      // Replay all prior history
+      s._uiInsights.history.forEach(m => renderBubble(m.who, m.text));
 
-      // Input row
+      // Typing indicator with animated dots
+      const showTyping = () => {
+        const dots = el('span', {}, '.');
+        const bubble = el('div', {
+          style: Object.assign({}, bubbleStyle('lumi'), { opacity: '0.7', fontStyle: 'italic' })
+        }, 'Lumi is thinking', dots);
+        stream.appendChild(bubble);
+        stream.scrollTop = stream.scrollHeight;
+        let n = 1;
+        const iv = setInterval(() => { n = (n % 3) + 1; dots.textContent = '.'.repeat(n); }, 240);
+        return () => { clearInterval(iv); bubble.remove(); };
+      };
+
       const input = el('input', { type: 'text', placeholder: 'Ask Lumi anything about your money…',
         style: { flex: '1', padding: '10px 14px', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--surface)' } });
       const sendMessage = () => {
-        const q = input.value.trim();
-        if (!q) return;
-        addBubble('user', q);
+        const raw = input.value.trim();
+        if (!raw) return;
+        let effective = raw;
+        if (isFollowUp(raw) && s._uiInsights.lastTopic) {
+          effective = s._uiInsights.lastTopic + ' ' + raw;
+        }
         input.value = '';
+        renderBubble('user', raw);
+        s._uiInsights.history.push({ who: 'user', text: raw });
+        const topic = detectTopic(effective);
+        if (topic) s._uiInsights.lastTopic = topic;
+        save();
+        const clearTyping = showTyping();
+        const delay = 650 + Math.random() * 350;
         setTimeout(() => {
-          coachReply(q).forEach(line => addBubble('lumi', line));
-        }, 220);
+          clearTyping();
+          const replies = coachReply(effective);
+          replies.forEach(line => {
+            renderBubble('lumi', line);
+            s._uiInsights.history.push({ who: 'lumi', text: line });
+          });
+          save();
+        }, delay);
       };
       input.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
       const sendBtn = el('button', { class: 'btn primary', onclick: sendMessage }, 'Send');
+      const clearBtn = el('button', { class: 'btn ghost', onclick: () => {
+        if (!confirm('Clear your chat history with Lumi?')) return;
+        s._uiInsights = { history: [], lastTopic: null };
+        save(); render();
+      }}, 'Clear');
 
       const chatCol = el('div', { class: 'card' },
         stream,
-        el('div', { style: { display: 'flex', gap: '8px', marginTop: '12px' } }, input, sendBtn)
+        el('div', { style: { display: 'flex', gap: '8px', marginTop: '12px' } }, input, sendBtn, clearBtn)
       );
 
       // Right: suggestion chips
