@@ -252,6 +252,18 @@
         target: 28000, saved: 8900, monthly: 650, deadline: addMonths(24),
         priority: 'medium', luminateAccount: 'acc_lhys',
         tip: 'You may qualify for Luminate HELOC at 7.25% — tap home equity without touching savings.'
+      },
+      {
+        id: 'g_car_fund', type: 'car', name: 'Honda Civic down payment', emoji: '🚗',
+        target: 5000, saved: 5000, monthly: 0, deadline: null,
+        completedAt: new Date(new Date().getFullYear(), new Date().getMonth() - 3, 15).toISOString().slice(0, 10),
+        priority: 'low', luminateAccount: 'acc_lhys', tip: null
+      },
+      {
+        id: 'g_laptop', type: 'home_project', name: 'New MacBook Pro', emoji: '💻',
+        target: 2400, saved: 2400, monthly: 0, deadline: null,
+        completedAt: new Date(new Date().getFullYear(), new Date().getMonth() - 6, 8).toISOString().slice(0, 10),
+        priority: 'low', luminateAccount: 'acc_lhys', tip: null
       }
     ];
   }

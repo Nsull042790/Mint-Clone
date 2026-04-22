@@ -81,6 +81,19 @@
       (merchant || '?').charAt(0).toUpperCase());
   }
 
+  // Confetti blast for milestone moments. No-op if canvas-confetti
+  // hasn't finished loading yet.
+  function fireConfetti() {
+    if (!window.confetti) return;
+    window.confetti({
+      particleCount: 140,
+      spread: 75,
+      startVelocity: 42,
+      origin: { y: 0.6 },
+      colors: ['#0c173d', '#1d3170', '#7bb7e0', '#15a56a', '#e8a63a', '#ffffff']
+    });
+  }
+
   // Animated KPI count-ups. Called once per render from app.js.
   function _animateKpis() {
     document.querySelectorAll('.kpi-value').forEach(node => {
@@ -1025,6 +1038,7 @@
             }}, 'Delete'),
             el('button', { class: 'btn', onclick: closeModal }, 'Cancel'),
             el('button', { class: 'btn primary', onclick: () => {
+              const wasComplete = !!g.completedAt || g.saved >= g.target;
               setState(st => {
                 const m = st.goals.find(x => x.id === g.id);
                 if (!m) return;
@@ -1032,8 +1046,16 @@
                 m.target = parseFloat(target.value) || m.target;
                 m.saved = parseFloat(saved.value) || 0;
                 m.monthly = parseFloat(monthly.value) || 0;
+                if (!wasComplete && m.saved >= m.target && m.target > 0) {
+                  m.completedAt = new Date().toISOString().slice(0, 10);
+                }
               });
-              closeModal(); toast('Goal updated ✓'); render();
+              const refreshed = getState().goals.find(x => x.id === g.id);
+              const justCompleted = !wasComplete && refreshed && refreshed.completedAt;
+              closeModal();
+              if (justCompleted) { fireConfetti(); toast('🎉 Goal complete — ' + refreshed.name + '!'); }
+              else { toast('Goal updated ✓'); }
+              render();
             }}, 'Save'))
         );
         openModal(modal);
@@ -1106,27 +1128,55 @@
         return;
       }
 
-      content.appendChild(el('div', { class: 'grid grid-3' },
-        ...goals.map(g => {
-          const pct = g.target > 0 ? (g.saved / g.target) * 100 : 0;
-          const proj = projectGoal(g);
-          return el('div', { class: 'goal', style: { cursor: 'pointer' }, onclick: () => openEditGoal(g) },
-            el('div', { style: { display: 'flex', gap: '14px', alignItems: 'center' } },
-              ring(pct),
-              el('div', { style: { flex: '1', minWidth: 0 } },
-                el('div', { class: 'goal-emoji' }, g.emoji),
-                el('div', { class: 'goal-name' }, g.name))),
-            el('div', { class: 'goal-amt' },
-              el('span', {}, fmtMoney(g.saved, { cents: false }) + ' / ' + fmtMoney(g.target, { cents: false })),
-              el('span', { class: 'num pos' }, '+' + fmtMoney(g.monthly, { cents: false }) + '/mo')),
-            progressBar(pct, pct >= 100 ? 'success' : pct >= 50 ? '' : 'warn'),
-            el('div', { class: 'subtle' },
-              proj ? 'Projected completion · ' + fmtDate(proj.completion) + '  (~' + proj.months + ' months)'
-                   : 'Set a monthly contribution to forecast completion'),
-            g.tip ? el('p', { class: 'muted', style: { fontSize: '12px', marginTop: '6px' } }, '💡 ' + g.tip) : null
-          );
-        })
-      ));
+      const activeGoals    = goals.filter(g => !g.completedAt && g.saved < g.target);
+      const completedGoals = goals.filter(g =>  g.completedAt || g.saved >= g.target);
+
+      if (activeGoals.length) {
+        content.appendChild(el('div', { class: 'grid grid-3', style: { marginBottom: '20px' } },
+          ...activeGoals.map(g => {
+            const pct = g.target > 0 ? (g.saved / g.target) * 100 : 0;
+            const proj = projectGoal(g);
+            return el('div', { class: 'goal', style: { cursor: 'pointer' }, onclick: () => openEditGoal(g) },
+              el('div', { style: { display: 'flex', gap: '14px', alignItems: 'center' } },
+                ring(pct),
+                el('div', { style: { flex: '1', minWidth: 0 } },
+                  el('div', { class: 'goal-emoji' }, g.emoji),
+                  el('div', { class: 'goal-name' }, g.name))),
+              el('div', { class: 'goal-amt' },
+                el('span', {}, fmtMoney(g.saved, { cents: false }) + ' / ' + fmtMoney(g.target, { cents: false })),
+                el('span', { class: 'num pos' }, '+' + fmtMoney(g.monthly, { cents: false }) + '/mo')),
+              progressBar(pct, pct >= 100 ? 'success' : pct >= 50 ? '' : 'warn'),
+              el('div', { class: 'subtle' },
+                proj ? 'Projected completion · ' + fmtDate(proj.completion) + '  (~' + proj.months + ' months)'
+                     : 'Set a monthly contribution to forecast completion'),
+              g.tip ? el('p', { class: 'muted', style: { fontSize: '12px', marginTop: '6px' } }, '💡 ' + g.tip) : null
+            );
+          })));
+      }
+
+      if (completedGoals.length) {
+        content.appendChild(card('Trophy shelf · ' + completedGoals.length + ' completed',
+          el('div', { class: 'grid grid-4', style: { gap: '12px' } },
+            ...completedGoals.map(g => el('div', {
+              class: 'goal',
+              style: {
+                background: 'linear-gradient(135deg, rgba(21,165,106,0.14), rgba(12,23,61,0.03))',
+                border: '1px solid rgba(21,165,106,0.35)'
+              }
+            },
+              el('div', { class: 'goal-emoji' }, g.emoji),
+              el('div', { class: 'goal-name' }, g.name),
+              el('div', { class: 'goal-amt' },
+                el('span', {}, fmtMoney(g.target, { cents: false }) + ' reached'),
+                el('span', { class: 'chip success' }, '✓ Complete')),
+              el('div', { class: 'subtle' },
+                g.completedAt ? 'Completed ' + fmtDate(g.completedAt) : 'Recently completed')))),
+          [el('button', { class: 'btn ghost', onclick: () => fireConfetti() }, 'Celebrate 🎉')]));
+      }
+
+      if (!activeGoals.length && !completedGoals.length) {
+        // no-op: the earlier early-return already rendered an empty state
+      }
     },
     bills: function (content) {
       const s = getState();
