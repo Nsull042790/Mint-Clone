@@ -411,6 +411,9 @@
       content.appendChild(el('div', { class: 'card' }, `View "${route}" coming soon.`));
     }
     window.scrollTo(0, 0);
+    if (window.LuminateViews && typeof window.LuminateViews._animateKpis === 'function') {
+      requestAnimationFrame(window.LuminateViews._animateKpis);
+    }
   }
 
   /* ---------- Onboarding ---------- */

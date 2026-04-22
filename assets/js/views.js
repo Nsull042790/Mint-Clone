@@ -50,6 +50,62 @@
     return el('div', { class: cls('bar', variant) }, fill);
   }
 
+  // Merchant logo via Simple Icons CDN. Falls back to null when the merchant
+  // isn't a known brand, letting callers render a letter badge instead.
+  const MERCHANT_ICON_SLUGS = {
+    'Whole Foods Market': 'wholefoodsmarket', 'Safeway': 'safeway', 'Costco': 'costco',
+    'Chipotle': 'chipotle', 'Starbucks': 'starbucks', 'DoorDash': 'doordash',
+    'Shell': 'shell', 'Chevron': 'chevron', 'Uber': 'uber', 'Lyft': 'lyft',
+    'Netflix': 'netflix', 'Spotify': 'spotify', 'Disney+': 'disneyplus',
+    'iCloud': 'icloud', 'NYT Digital': 'newyorktimes', 'ChatGPT Plus': 'openai',
+    'Comcast Xfinity': 'xfinity', 'Verizon Wireless': 'verizon',
+    'Amazon': 'amazon', 'Target': 'target', 'Apple': 'apple', 'Nike': 'nike',
+    'Walgreens': 'walgreens', 'AMC Theaters': 'amctheatres', 'Steam': 'steam',
+    'Delta Airlines': 'delta', 'Airbnb': 'airbnb', 'Marriott': 'marriott',
+    'Coursera': 'coursera', 'PetSmart': 'petsmart', 'Chewy': 'chewy',
+    'Etsy': 'etsy'
+  };
+  function merchantIconUrl(merchant) {
+    const slug = MERCHANT_ICON_SLUGS[merchant];
+    return slug ? 'https://cdn.simpleicons.org/' + slug + '/ffffff' : null;
+  }
+  function renderMerchantIcon(merchant, categoryColor) {
+    const url = merchantIconUrl(merchant);
+    if (url) {
+      return el('div', { class: 'txn-icon', style: { background: categoryColor, padding: '7px' } },
+        el('img', { src: url, alt: merchant, width: '22', height: '22',
+          style: { display: 'block', width: '22px', height: '22px' },
+          onerror: 'this.style.display="none";this.parentElement.textContent=this.alt.charAt(0).toUpperCase();this.parentElement.style.color="#fff";this.parentElement.style.padding="0";' }));
+    }
+    return el('div', { class: 'txn-icon', style: { background: categoryColor, color: '#fff' } },
+      (merchant || '?').charAt(0).toUpperCase());
+  }
+
+  // Animated KPI count-ups. Called once per render from app.js.
+  function _animateKpis() {
+    document.querySelectorAll('.kpi-value').forEach(node => {
+      if (node.hasAttribute('data-animated')) return;
+      node.setAttribute('data-animated', '1');
+      const final = node.textContent;
+      const m = final.match(/^(-?)(\$)?(\d[\d,]*)(\.\d+)?(.*)$/);
+      if (!m) return;
+      const sign = m[1] || '', prefix = m[2] || '', intStr = m[3], suffix = (m[4] || '') + (m[5] || '');
+      const target = parseInt(intStr.replace(/,/g, ''), 10);
+      if (!Number.isFinite(target) || target < 50) return;
+      const start = performance.now();
+      const duration = 700;
+      const tick = (now) => {
+        const t = Math.min(1, (now - start) / duration);
+        const eased = 1 - Math.pow(1 - t, 3);
+        const cur = Math.round(target * eased);
+        node.textContent = sign + prefix + cur.toLocaleString() + suffix;
+        if (t < 1) requestAnimationFrame(tick);
+        else node.textContent = final;
+      };
+      requestAnimationFrame(tick);
+    });
+  }
+
   // Clarity Pulse — weekly digest of what changed. Used on the dashboard.
   function generateClarityPulse() {
     const s = getState();
@@ -652,7 +708,7 @@
         return el('tr', { style: { cursor: 'pointer' }, onclick: () => openEditTxn(t) },
           el('td', {}, fmtDateShort(t.date) + (t.pending ? ' ⏱' : '')),
           el('td', {}, el('div', { class: 'txn-merchant' },
-            el('div', { class: 'txn-icon', style: { background: cat.color, color: '#fff' } }, cat.icon),
+            renderMerchantIcon(t.merchant, cat.color),
             el('div', {},
               el('strong', {}, t.merchant),
               el('small', {}, t.description || ''))
@@ -2041,6 +2097,7 @@
         )
       ));
     },
+    _animateKpis: _animateKpis,
     student: function (content) {
       content.appendChild(viewHeader('Student Center', 'Financial tools built for your student years.'));
       content.appendChild(el('div', { class: 'card' },
