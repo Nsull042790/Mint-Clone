@@ -2135,17 +2135,129 @@
       ));
     },
     homebuyer: function (content) {
-      content.appendChild(viewHeader('Homebuyer Journey', 'From saving your down payment to closing day.'));
-      content.appendChild(el('div', { class: 'card' },
-        el('h3', {}, '🔑 Coming soon'),
-        el('p', { class: 'muted' }, 'Luminate Homebuyer guides you through the biggest purchase of your life with real numbers, not guesswork.'),
-        el('ul', { style: { paddingLeft: '20px', marginTop: '12px', color: 'var(--text-muted)' } },
-          el('li', {}, 'Affordability calculator that pulls in your real income, debts, and savings.'),
-          el('li', {}, 'Down-payment goal engine with Luminate High-Yield + first-time-buyer programs.'),
-          el('li', {}, 'Pre-approval readiness check against current Luminate Mortgage rates.'),
-          el('li', {}, 'Closing-cost forecasts and moving-fund planning, based on your target ZIP code.')
-        )
+      const s = getState();
+
+      const monthlyInc = averageMonthlyIncome(3);
+      const debtPayments = s.accounts.filter(a => a.balance < 0).reduce((x, a) => {
+        if (a.type === 'credit') return x + Math.abs(a.balance) * 0.03;
+        if (a.type === 'loan') {
+          const bal = Math.abs(a.balance);
+          const r = (a.apr || 5) / 100 / 12;
+          const n = 25 * 12;
+          const pmt = r > 0 ? bal * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1) : bal / n;
+          return x + pmt;
+        }
+        return x;
+      }, 0);
+      const cashSaved = s.accounts
+        .filter(a => a.type === 'checking' || a.type === 'savings')
+        .reduce((x, a) => x + Math.max(0, a.balance), 0);
+
+      if (!s._uiHome) s._uiHome = { rate: 6.5, termYears: 30, downPct: 10, taxPct: 1.1, insPct: 0.35, hoa: 0 };
+      const ui = s._uiHome;
+      const setField = (key) => (e) => {
+        const val = parseFloat(e.target.value);
+        if (Number.isFinite(val)) { setState(st => { st._uiHome[key] = val; }); render(); }
+      };
+
+      const calcPITI = (price) => {
+        const loan = price * (1 - ui.downPct / 100);
+        const r = (ui.rate / 100) / 12;
+        const n = ui.termYears * 12;
+        const pi = r > 0 ? loan * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1) : loan / n;
+        const tax = price * (ui.taxPct / 100) / 12;
+        const ins = price * (ui.insPct / 100) / 12;
+        const pmi = (ui.downPct / 100) < 0.20 ? loan * 0.005 / 12 : 0;
+        const hoa = ui.hoa || 0;
+        return { pi, tax, ins, pmi, hoa, total: pi + tax + ins + pmi + hoa };
+      };
+      const maxPrice = (budget) => {
+        const r = (ui.rate / 100) / 12;
+        const n = ui.termYears * 12;
+        const piFactor = r > 0
+          ? (1 - ui.downPct / 100) * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1)
+          : (1 - ui.downPct / 100) / n;
+        const perDollar = piFactor + (ui.taxPct / 100) / 12 + (ui.insPct / 100) / 12
+          + ((ui.downPct / 100) < 0.20 ? (1 - ui.downPct / 100) * 0.005 / 12 : 0);
+        const net = Math.max(0, budget - (ui.hoa || 0));
+        return perDollar > 0 ? net / perDollar : 0;
+      };
+
+      const housing2836 = monthlyInc * 0.28;
+      const housing43   = Math.max(0, monthlyInc * 0.43 - debtPayments);
+      const max2836 = maxPrice(housing2836);
+      const max43   = maxPrice(housing43);
+
+      content.appendChild(viewHeader('Homebuyer Journey',
+        'See exactly how much house you can afford — pre-filled from your Luminate accounts.'));
+
+      content.appendChild(el('div', { class: 'grid grid-4', style: { marginBottom: '20px' } },
+        kpi('Max home · 28/36',   fmtMoneyShort(max2836), { text: 'Conservative rule' }, 'success'),
+        kpi('Max home · 43% DTI', fmtMoneyShort(max43),   { text: 'What banks allow' }, 'navy'),
+        kpi('Cash available',     fmtMoneyShort(cashSaved), { text: 'For down payment' }),
+        kpi('Housing budget',     fmtMoney(housing2836, { cents: false }), { text: '28% of take-home' })
       ));
+
+      const inputField = (label, value, key, step, min, max) => {
+        const inp = el('input', { type: 'number', value: value, step: step, min: min, max: max });
+        inp.addEventListener('change', setField(key));
+        return el('div', { class: 'form-row' }, el('label', {}, label), inp);
+      };
+
+      const buildBar = (piti) => {
+        const segs = [
+          { label: 'P&I', val: piti.pi,  color: '#0c173d' },
+          { label: 'Tax', val: piti.tax, color: '#5fa3d3' },
+          { label: 'Ins', val: piti.ins, color: '#7bb7e0' },
+          { label: 'PMI', val: piti.pmi, color: '#e8a63a' },
+          { label: 'HOA', val: piti.hoa, color: '#8591a8' }
+        ].filter(seg => seg.val > 0);
+        const total = piti.total || 1;
+        return el('div', { style: { display: 'flex', height: '18px', borderRadius: '9px', overflow: 'hidden' } },
+          ...segs.map(seg => el('div', {
+            title: seg.label + ': ' + fmtMoney(seg.val),
+            style: { width: (seg.val / total * 100) + '%', background: seg.color }
+          })));
+      };
+      const buildLegend = (piti) => el('div', {
+        style: { display: 'flex', gap: '12px', marginTop: '8px', fontSize: '11px', flexWrap: 'wrap', color: 'var(--text-muted)' }
+      },
+        el('span', {}, 'P&I ' + fmtMoney(piti.pi)),
+        el('span', {}, 'Tax ' + fmtMoney(piti.tax)),
+        el('span', {}, 'Ins ' + fmtMoney(piti.ins)),
+        piti.pmi > 0 ? el('span', {}, 'PMI ' + fmtMoney(piti.pmi)) : null,
+        piti.hoa > 0 ? el('span', {}, 'HOA ' + fmtMoney(piti.hoa)) : null);
+      const resultCard = (rule, subtitle, budget, maxP) => {
+        const piti = calcPITI(maxP);
+        const passes = piti.total <= budget + 1;
+        return el('div', { class: 'card' },
+          el('div', { class: 'card-head' },
+            el('strong', {}, rule),
+            el('span', { class: cls('chip', passes ? 'success' : 'warn') }, passes ? 'In range' : 'Stretches')),
+          el('div', { style: { fontSize: '30px', fontWeight: '700', fontFamily: 'var(--ff-headline)', marginBottom: '4px' } }, fmtMoney(maxP, { cents: false })),
+          el('div', { class: 'subtle', style: { marginBottom: '16px' } }, subtitle + ' · housing budget ' + fmtMoney(budget) + '/mo'),
+          el('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '6px' } },
+            el('span', { class: 'muted' }, 'Estimated PITI at max price'),
+            el('strong', {}, fmtMoney(piti.total) + '/mo')),
+          buildBar(piti),
+          buildLegend(piti));
+      };
+
+      content.appendChild(el('div', { class: 'grid grid-2', style: { marginBottom: '20px' } },
+        resultCard('28/36 rule',  'Conservative lending guideline', housing2836, max2836),
+        resultCard('43% DTI cap', 'Maximum most banks approve',     housing43,   max43)
+      ));
+
+      content.appendChild(card('Adjust assumptions', [
+        el('div', { class: 'grid grid-3' },
+          inputField('Down payment (%)',  ui.downPct,   'downPct',   '1',     '0', '100'),
+          inputField('Interest rate (%)', ui.rate,      'rate',      '0.125', '0', '15'),
+          inputField('Term (years)',      ui.termYears, 'termYears', '1',     '5', '40')),
+        el('div', { class: 'grid grid-3' },
+          inputField('Property tax (%)',  ui.taxPct, 'taxPct', '0.1',  '0', '5'),
+          inputField('Insurance (%)',     ui.insPct, 'insPct', '0.05', '0', '2'),
+          inputField('HOA ($/mo)',        ui.hoa,    'hoa',    '10',   '0'))
+      ]));
     },
     _animateKpis: _animateKpis,
     student: function (content) {
