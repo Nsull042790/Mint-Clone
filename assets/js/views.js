@@ -2258,6 +2258,107 @@
           inputField('Insurance (%)',     ui.insPct, 'insPct', '0.05', '0', '2'),
           inputField('HOA ($/mo)',        ui.hoa,    'hoa',    '10',   '0'))
       ]));
+
+      // --- Down-payment goal integration ---
+      const downGoal = s.goals.find(g => g.type === 'home_down');
+      const targetDown = max43 * (ui.downPct / 100);
+      const goalBody = [];
+      if (downGoal) {
+        const progress = downGoal.target > 0 ? (downGoal.saved / downGoal.target) * 100 : 0;
+        const proj = projectGoal(downGoal);
+        goalBody.push(
+          el('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: '8px' } },
+            el('strong', {}, fmtMoney(downGoal.saved, { cents: false }) + ' saved toward ' + downGoal.name),
+            el('span', { class: 'subtle' }, 'Target ' + fmtMoney(downGoal.target, { cents: false }))),
+          progressBar(progress, progress >= 100 ? 'success' : 'navy'),
+          el('p', { class: 'muted', style: { marginTop: '10px', fontSize: '13px' } },
+            proj
+              ? 'At ' + fmtMoney(downGoal.monthly) + '/mo, you reach the down-payment in ' + proj.months + ' months (' + fmtDateShort(proj.completion) + ').'
+              : 'Set a monthly contribution in Goals to forecast your finish date.'),
+          el('div', { style: { display: 'flex', gap: '8px', marginTop: '10px' } },
+            el('button', { class: 'btn primary', onclick: () => {
+              setState(st => { const g = st.goals.find(x => x.id === downGoal.id); if (g) g.monthly = (g.monthly || 0) + 100; });
+              toast('Bumped ' + downGoal.name + ' to ' + fmtMoney((downGoal.monthly || 0) + 100) + '/mo');
+              render();
+            }}, 'Route +$100/mo'),
+            el('button', { class: 'btn', onclick: () => navigate('goals') }, 'Open Goals →')));
+      } else {
+        goalBody.push(
+          el('p', { class: 'muted' },
+            'You don\'t have a down-payment goal yet. Based on ' + ui.downPct + '% down on ' + fmtMoney(max43, { cents: false }) + ', the target is ' + fmtMoney(targetDown, { cents: false }) + '.'),
+          el('div', { style: { marginTop: '10px' } },
+            el('button', { class: 'btn primary', onclick: () => navigate('goals') }, 'Create down-payment goal →')));
+      }
+      content.appendChild(card('Down-payment goal', goalBody));
+
+      // --- Lumi explanation, DISC-voiced ---
+      const disc = s.user.disc && s.user.disc.primary;
+      const pitiMax = calcPITI(max43);
+      const lumiLines = [];
+      if (disc === 'D') {
+        lumiLines.push('Max you can swing: ' + fmtMoney(max43, { cents: false }) + '. PITI ~' + fmtMoney(pitiMax.total) + '/mo.');
+        lumiLines.push(downGoal && downGoal.monthly
+          ? 'Bump ' + downGoal.name + ' by $100/mo and you close the gap faster. Do it today.'
+          : 'Create a down-payment goal today and automate the contribution.');
+      } else if (disc === 'I') {
+        lumiLines.push('Nice — a ' + fmtMoney(max43, { cents: false }) + ' home is in reach.');
+        lumiLines.push('Keep this savings pace and you\'re a homeowner faster than most people your age. Milestone worth celebrating.');
+      } else if (disc === 'S') {
+        lumiLines.push('You\'re in a steady spot. A ' + fmtMoney(max2836, { cents: false }) + ' home fits the conservative 28/36 rule comfortably.');
+        lumiLines.push('No rush — the numbers only get better as you keep saving, and nothing here stresses your emergency fund.');
+      } else if (disc === 'C') {
+        lumiLines.push('At ' + ui.rate.toFixed(2) + '% / ' + ui.termYears + '-yr / ' + ui.downPct + '% down: max ' + fmtMoney(max2836, { cents: false }) + ' (28/36) or ' + fmtMoney(max43, { cents: false }) + ' (43% DTI).');
+        lumiLines.push('PITI at max43 = ' + fmtMoney(pitiMax.total) + '/mo. Raising down payment to 20% removes PMI and saves ' + fmtMoney(pitiMax.pmi * 12) + '/yr.');
+      } else {
+        lumiLines.push('Based on your numbers, ' + fmtMoney(max43, { cents: false }) + ' is your ceiling, or ' + fmtMoney(max2836, { cents: false }) + ' for breathing room.');
+        lumiLines.push('PITI at the top end runs ' + fmtMoney(pitiMax.total) + '/mo all-in.');
+      }
+      content.appendChild(el('div', {
+        class: 'card',
+        style: { background: 'linear-gradient(120deg, rgba(123,183,224,0.14), rgba(12,23,61,0.04))' }
+      },
+        el('div', { class: 'card-head' },
+          el('strong', {}, 'Lumi\'s take'),
+          disc ? el('span', { class: 'chip navy' }, disc + '-style voice') : null),
+        ...lumiLines.map(line => el('p', { style: { marginBottom: '8px' } }, line))));
+
+      // --- Luminate Mortgage CTA ---
+      const openMortgageModal = () => {
+        const name = el('input', { type: 'text', value: ((s.user.firstName || '') + ' ' + (s.user.lastName || '')).trim() });
+        const phone = el('input', { type: 'tel', placeholder: '(555) 555-5555' });
+        const price = el('input', { type: 'number', value: Math.round(max43) });
+        const when = el('select', {},
+          el('option', { value: 'asap' }, 'As soon as possible'),
+          el('option', { value: 'morning' }, 'Tomorrow morning'),
+          el('option', { value: 'week' }, 'Sometime this week'));
+        openModal(el('div', {},
+          el('h2', {}, 'Get pre-approved with Luminate Mortgage'),
+          el('p', { class: 'muted', style: { marginBottom: '14px' } },
+            'A licensed Luminate Mortgage officer will call you within 15 minutes to confirm pre-approval, lock a rate, and start paperwork.'),
+          el('div', { class: 'grid grid-2' },
+            el('div', { class: 'form-row' }, el('label', {}, 'Name'), name),
+            el('div', { class: 'form-row' }, el('label', {}, 'Phone'), phone)),
+          el('div', { class: 'grid grid-2' },
+            el('div', { class: 'form-row' }, el('label', {}, 'Target home price'), price),
+            el('div', { class: 'form-row' }, el('label', {}, 'When to call'), when)),
+          el('div', { class: 'modal-actions' },
+            el('button', { class: 'btn', onclick: closeModal }, 'Cancel'),
+            el('button', { class: 'btn primary', onclick: () => {
+              closeModal();
+              toast('A Luminate Mortgage officer will call you shortly.');
+            }}, 'Request call'))));
+      };
+      content.appendChild(el('div', {
+        class: 'card',
+        style: { background: 'linear-gradient(135deg, #0c173d 0%, #1d3170 60%, #5fa3d3 100%)',
+                 color: '#fff', border: 'none', marginTop: '20px' }
+      },
+        el('div', { style: { display: 'flex', gap: '18px', alignItems: 'center', flexWrap: 'wrap' } },
+          el('div', { style: { flex: '1', minWidth: '240px' } },
+            el('strong', { style: { fontSize: '20px', display: 'block', marginBottom: '4px', fontFamily: 'var(--ff-headline)' } }, 'Ready to make it real?'),
+            el('span', { style: { opacity: '0.85' } },
+              'Get pre-approved with Luminate Mortgage in 15 minutes. 0.25% rate discount when you pay from Luminate Checking.')),
+          el('button', { class: 'btn lumi', onclick: openMortgageModal }, 'Get pre-approved →'))));
     },
     _animateKpis: _animateKpis,
     student: function (content) {
